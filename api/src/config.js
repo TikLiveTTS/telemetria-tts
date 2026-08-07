@@ -37,7 +37,13 @@ const config = {
   trustProxy: bool('TRUST_PROXY', false),
 
   tzDisplay: (process.env.TZ_DISPLAY || 'America/Guayaquil').trim(),
-  publicOrigin: (process.env.PUBLIC_ORIGIN || '*').trim(),
+  // Lista separada por comas. "*" en cualquier posicion permite cualquier origen.
+  // Cada entrada admite un unico comodin "*" (ej. "https://foo-*-bar.vercel.app")
+  // para cubrir hashes de preview sin listarlos uno a uno.
+  publicOrigin: (process.env.PUBLIC_ORIGIN || '*')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
 
   // Limites de la ingesta
   maxEventsPerBatch: int('MAX_EVENTS_PER_BATCH', 50),

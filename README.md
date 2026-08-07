@@ -28,30 +28,18 @@ en Portainer apuntando a este repositorio y arranca sin tocar nada mas.
 | `updates` | comprobaciones e instalaciones de version | completo |
 | `errors` | errores de la app, agrupados por firma | completo |
 | `settings` | foto de la configuracion al arrancar | completo |
-| `tts` | mensajes leidos, idioma y rate limit | parcial |
-| `music` | peticiones de cancion y skips | parcial |
-| `soundpad` | sonidos disparados por atajo o desde el movil | parcial |
-| `moderation` | mensajes filtrados y su motivo | parcial |
+| `tts` | mensajes leidos, idioma, rate limit, saltados y desbordes de cola | completo |
+| `music` | peticiones de cancion, skips y reproducciones de playlist | completo |
+| `soundpad` | sonidos disparados por atajo o desde el movil | completo |
+| `moderation` | mensajes filtrados, su motivo y palabras bloqueadas | completo |
 
 Los eventos de alta frecuencia (mensajes TTS, sonidos, filtros) se agregan en
 el cliente y viajan como un contador por latido, no uno por mensaje.
 
-### Que le falta a los conectores "parcial"
-
-Estos eventos estan implementados a los dos lados, pero **nadie los emite
-todavia**: nacen en la ventana de la app (el renderer) y ese proceso aun no
-tiene un canal hacia el bus de telemetria.
-
-| Evento | Donde nace |
-|---|---|
-| `tts.skipped`, `tts.queue_overflow` | cola TTS del renderer (`public/index.html`) |
-| `soundpad.triggered` desde la UI | boton del soundpad en la ventana |
-| `music.playlist_play` | reproductor del renderer |
-| `moderation.word_blocked` | filtrado del lado cliente |
-
-Para cerrarlos hace falta un puente renderer → servidor: un endpoint local
-`POST /api/telemetry/event` o un canal IPC en `preload.js`. Hasta entonces esos
-contadores existen y se quedan a cero, sin romper nada.
+`tts.skipped` y `tts.queue_overflow` nacen en la ventana de la app
+(`public/index.html`) y llegan al bus via un canal IPC en `preload.js`/
+`main.js` (`telemetry:track`, con lista blanca de esos dos nombres). El resto
+de conectores emite directo desde el proceso principal o `server.js`.
 
 ## Deploy en Portainer
 
@@ -72,7 +60,8 @@ contadores existen y se quedan a cero, sin romper nada.
    | `ADMIN_PASSWORD` | la password del panel |
    | `SESSION_SECRET` | salida de `openssl rand -hex 32` |
    | `PORT` | `4000` |
-   | `PUBLIC_ORIGIN` | `https://www.tiklivetts.es` |
+   | `TRUST_PROXY` | `true` (va detras de Caddy) |
+   | `PUBLIC_ORIGIN` | `https://www.tiklivetts.es,https://tiklivetts.es,...` (lista separada por comas) |
 
    El stack **no arranca** si falta alguna de las tres primeras. Es a proposito:
    mejor un fallo visible que un servicio abierto con credenciales por defecto.
@@ -82,15 +71,42 @@ contadores existen y se quedan a cero, sin romper nada.
 Para actualizar: en el stack, **Pull and redeploy**. Las migraciones de base de
 datos se aplican solas al arrancar y son idempotentes.
 
+## TLS con Caddy
+
+El stack incluye un servicio `caddy` (puertos 80/443) que hace de unico punto
+de entrada publico y gestiona el certificado TLS solo, via Let's Encrypt.
+Necesario porque la web publica es `https://` y un `<script src="http://...">`
+en una pagina https se bloquea por contenido mixto en el navegador.
+
+Para que funcione:
+
+1. Crea un registro DNS tipo **A** apuntando `telemetria.tiklivetts.es` a la
+   IP publica de tu servidor Docker (esto lo haces tu, en tu proveedor DNS).
+2. Abre los puertos **80** y **443** en el firewall del servidor (80 hace
+   falta para el reto ACME de Let's Encrypt, no solo redirige).
+3. `docker compose up --build -d`. Caddy pide el certificado solo al arrancar
+   si el DNS ya resuelve; si no, sirve error hasta que resuelva.
+4. En produccion, pon `TRUST_PROXY=true` en el `.env` — Caddy es ahora quien
+   habla con `api`, y `clientIp()` necesita leer `X-Forwarded-For` de un
+   proxy de confianza, no de cualquiera.
+
+El puerto 4000 del contenedor `api` sigue publicado al host (util para
+pruebas locales sin DNS/TLS, `http://localhost:4000`); en produccion puedes
+cerrarlo en el firewall del servidor si quieres que Caddy sea el unico
+camino de entrada.
+
 ## URLs
 
 | | |
 |---|---|
-| Panel | `http://tu-servidor:4000` |
-| Ingesta (la usa la app) | `http://tu-servidor:4000/api/ingest` |
-| Lista publica de creadores | `http://tu-servidor:4000/api/public/creators` |
-| Widget para tu web | `http://tu-servidor:4000/embed/creators.js` |
-| Health check | `http://tu-servidor:4000/health` |
+| Panel | `https://telemetria.tiklivetts.es` |
+| Ingesta (la usa la app) | `https://telemetria.tiklivetts.es/api/ingest` |
+| Lista publica de creadores | `https://telemetria.tiklivetts.es/api/public/creators` |
+| Widget para tu web | `https://telemetria.tiklivetts.es/embed/creators.js` |
+| Health check | `https://telemetria.tiklivetts.es/health` |
+
+En local sin Caddy/DNS, todo lo anterior tambien responde en
+`http://localhost:4000/...`.
 
 ## Conectar la app
 
@@ -98,7 +114,7 @@ En el repositorio de TikTok TTS, define la URL del servidor por entorno al
 compilar:
 
 ```
-TELEMETRY_URL=http://tu-servidor:4000/api/ingest
+TELEMETRY_URL=https://telemetria.tiklivetts.es/api/ingest
 ```
 
 o, para pruebas locales, creando `telemetry.json` en la carpeta de datos de la
@@ -125,7 +141,7 @@ Para incrustar la rejilla de creadores en tu pagina:
 
 ```html
 <div id="ttt-creators"></div>
-<script src="http://tu-servidor:4000/embed/creators.js"></script>
+<script src="https://telemetria.tiklivetts.es/embed/creators.js"></script>
 ```
 
 La respuesta publica nunca incluye `machine_id`, IP ni tus notas privadas.

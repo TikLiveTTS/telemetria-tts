@@ -1,0 +1,3 @@
+telemetria.tiklivetts.es {
+	reverse_proxy api:4000
+}

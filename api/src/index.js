@@ -94,7 +94,7 @@ async function main() {
     console.log(`[api] escuchando en :${config.port}`);
     console.log(`[api] zona horaria de visualizacion: ${config.tzDisplay}`);
     console.log(`[api] retencion de eventos: ${config.retentionDays} dias`);
-    if (config.publicOrigin === '*') {
+    if (config.publicOrigin.includes('*')) {
       console.log('[api] aviso: PUBLIC_ORIGIN=* — /api/public/* es legible desde cualquier web');
     }
   });

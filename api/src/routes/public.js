@@ -12,9 +12,26 @@ const router = express.Router();
 
 const limit = makeRateLimit({ max: 120, windowMs: 60 * 1000 });
 
+// Cada entrada de config.publicOrigin admite un unico comodin "*" (ej. para
+// hashes de preview de Vercel). "*" a secas permite cualquier origen.
+function originAllowed(origin) {
+  if (!origin) return false;
+  return config.publicOrigin.some((pattern) => {
+    if (pattern === '*') return true;
+    if (!pattern.includes('*')) return pattern === origin;
+    const [prefix, suffix] = pattern.split('*');
+    return origin.startsWith(prefix) && origin.endsWith(suffix);
+  });
+}
+
 function cors(req, res, next) {
-  res.setHeader('Access-Control-Allow-Origin', config.publicOrigin);
   res.setHeader('Vary', 'Origin');
+  const origin = req.headers.origin;
+  if (config.publicOrigin.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (originAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Cache-Control', 'public, max-age=300');
   next();
 }
@@ -31,7 +48,7 @@ router.get('/api/public/creators', limit, cors, async (req, res) => {
 
 // Widget de una linea para la web:
 //   <div id="ttt-creators"></div>
-//   <script src="http://tu-servidor:4000/embed/creators.js"></script>
+//   <script src="https://telemetria.tiklivetts.es/embed/creators.js"></script>
 router.get('/embed/creators.js', limit, cors, async (req, res) => {
   let creators = [];
   try {
