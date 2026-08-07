@@ -1,0 +1,61 @@
+/* Sistema visual del panel.
+   Este es el unico archivo que hay que tocar para rehacer el aspecto:
+   colores, radios, espaciado y tipografia salen todos de aqui. */
+
+:root {
+  /* Superficies */
+  --bg:         #0a0a0a;
+  --surface:    #141414;
+  --surface-2:  #1c1c1c;
+  --surface-3:  #232323;
+  --border:     #2a2a2a;
+  --border-soft:#1f1f1f;
+
+  /* Texto */
+  --text:       #f0f0f0;
+  --text-dim:   #b4b4b4;
+  --muted:      #777777;
+
+  /* Acentos (paleta TikTok) */
+  --accent:     #fe2c55;
+  --accent-2:   #25f4ee;
+  --accent-dim: rgba(254, 44, 85, .14);
+
+  /* Semanticos */
+  --ok:      #22c55e;
+  --warn:    #f59e0b;
+  --err:     #f87171;
+  --twitch:  #9146ff;
+  --youtube: #ff4444;
+
+  /* Radios */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  /* Espaciado (multiplos de 4) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+
+  /* Tipografia */
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mono: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+
+  --fs-xs: .7rem;
+  --fs-sm: .78rem;
+  --fs-md: .88rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.6rem;
+  --fs-2xl: 2rem;
+
+  /* Otros */
+  --shadow: 0 4px 24px rgba(0, 0, 0, .4);
+  --sidebar-w: 210px;
+  --header-h: 60px;
+}

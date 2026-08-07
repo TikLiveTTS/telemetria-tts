@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>TikTok TTS · Telemetria</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='12' fill='%23fe2c55'/></svg>">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/app.css">
+<script src="/vendor/chart.umd.min.js" defer></script>
+<script type="module" src="/js/main.js" defer></script>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login" hidden>
+  <form class="login-box" id="login-form">
+    <h1>TikTok TTS · Telemetria</h1>
+    <p>Panel de administracion</p>
+
+    <label for="f-user">Usuario</label>
+    <input id="f-user" name="user" autocomplete="username" autofocus required>
+
+    <label for="f-pass">Contrasena</label>
+    <input id="f-pass" name="password" type="password" autocomplete="current-password" required>
+
+    <div class="login-error" id="login-error"></div>
+    <button class="btn btn-accent" style="width:100%" type="submit">Entrar</button>
+  </form>
+</div>
+
+<!-- Panel -->
+<div id="app" hidden>
+  <header>
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div>
+        <h1>TikTok TTS · Telemetria</h1>
+        <small id="last-refresh">—</small>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="seg" id="period">
+        <button data-days="7">7d</button>
+        <button data-days="30" class="active">30d</button>
+        <button data-days="90">90d</button>
+        <button data-days="3650">Todo</button>
+      </div>
+      <button class="btn" id="btn-refresh" title="Refrescar">&#8635;</button>
+      <button class="btn" id="btn-logout">Salir</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav id="nav">
+      <a href="#/overview"><span class="ico">&#9632;</span> Resumen</a>
+      <a href="#/creators"><span class="ico">&#9733;</span> Creadores</a>
+      <a href="#/geo"><span class="ico">&#9673;</span> Geografia</a>
+      <a href="#/features"><span class="ico">&#9635;</span> Funciones</a>
+      <a href="#/versions"><span class="ico">&#9674;</span> Versiones</a>
+      <a href="#/sessions"><span class="ico">&#9776;</span> Sesiones</a>
+      <a href="#/errors"><span class="ico">&#9888;</span> Errores</a>
+      <a href="#/settings"><span class="ico">&#9881;</span> Ajustes</a>
+    </nav>
+
+    <main id="view"></main>
+  </div>
+
+  <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+  <aside class="drawer" id="drawer" hidden></aside>
+</div>
+
+</body>
+</html>

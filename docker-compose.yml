@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: telemetry
+      POSTGRES_USER: telemetry
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?falta POSTGRES_PASSWORD}
+      TZ: ${TZ:-America/Guayaquil}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telemetry -d telemetry"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_URL: postgresql://telemetry:${POSTGRES_PASSWORD}@postgres:5432/telemetry
+      ADMIN_USER: ${ADMIN_USER:?falta ADMIN_USER}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?falta ADMIN_PASSWORD}
+      SESSION_SECRET: ${SESSION_SECRET:?falta SESSION_SECRET}
+      PORT: 4000
+      RETENTION_DAYS: ${RETENTION_DAYS:-365}
+      ANONYMIZE_IP: ${ANONYMIZE_IP:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      TZ: ${TZ:-America/Guayaquil}
+      TZ_DISPLAY: ${TZ_DISPLAY:-America/Guayaquil}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-*}
+    ports:
+      - "${PORT:-4000}:4000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
