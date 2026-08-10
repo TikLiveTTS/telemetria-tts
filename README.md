@@ -71,6 +71,14 @@ de conectores emite directo desde el proceso principal o `server.js`.
 Para actualizar: en el stack, **Pull and redeploy**. Las migraciones de base de
 datos se aplican solas al arrancar y son idempotentes.
 
+La imagen de `api` **no se construye en tu servidor**: se descarga ya lista
+desde `ghcr.io/tiklivetts/telemetria-tts-api:latest`, publicada por un GitHub
+Action (`.github/workflows/build-api.yml`) en cada push a `main` que toque
+`api/`. Portainer solo hace `pull`. (Motivo: en algunos hosts, sobre todo con
+poca RAM o kernels recientes, `npm install` dentro del build puede fallar con
+errores raros de npm sin relacion al codigo — construir la imagen fuera evita
+ese problema por completo.)
+
 ## TLS con Caddy
 
 El stack incluye un servicio `caddy` (puertos 80/443) que hace de unico punto

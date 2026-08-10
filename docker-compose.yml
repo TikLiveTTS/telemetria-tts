@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
 
   api:
-    build: ./api
+    image: ghcr.io/tiklivetts/telemetria-tts-api:latest
     depends_on:
       postgres:
         condition: service_healthy
