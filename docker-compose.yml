@@ -17,6 +17,7 @@ services:
 
   api:
     image: ghcr.io/tiklivetts/telemetria-tts-api:latest
+    pull_policy: always
     depends_on:
       postgres:
         condition: service_healthy
