@@ -1,6 +1,7 @@
 // Router por hash. Sin build step, sin dependencias.
 
 import { destroyCharts } from './charts.js';
+import { destroyMap } from './pages/geo.js';
 import { clear, el } from './format.js';
 
 const routes = new Map();
@@ -48,6 +49,7 @@ export async function renderCurrent() {
 
   const view = document.getElementById('view');
   destroyCharts();
+  destroyMap();
   clear(view);
 
   try {

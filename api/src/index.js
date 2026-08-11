@@ -73,6 +73,10 @@ app.use('/vendor', express.static(
   path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist'),
   { index: false, maxAge: '30d' }
 ));
+app.use('/vendor', express.static(
+  path.join(__dirname, '..', 'node_modules', 'maplibre-gl', 'dist'),
+  { index: false, maxAge: '30d' }
+));
 
 app.use(express.static(WEB_DIR, { extensions: ['html'] }));
 

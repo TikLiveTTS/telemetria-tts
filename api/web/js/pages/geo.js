@@ -2,62 +2,126 @@ import { api } from '../api.js';
 import { el, num, minutes, skeleton } from '../format.js';
 import { barChart } from '../charts.js';
 
-// Mapa en canvas con proyeccion Web Mercator. Sin libreria de mapas: son
-// puntos sobre una rejilla, y eso no justifica 200 KB de dependencia.
-function renderMap(canvas, points) {
-  const parent = canvas.parentElement;
-  const dpr = window.devicePixelRatio || 1;
-  const w = parent.clientWidth;
-  const h = parent.clientHeight;
+// Mapa real con MapLibre GL, sin API key: tiles gratis de CARTO (Positron,
+// raster). El estilo se define inline (sin fetch a un style.json externo) asi
+// no hace falta tocar la CSP mas alla de imgSrc, que ya permite https:.
+const BASEMAP_STYLE = {
+  version: 8,
+  sources: {
+    carto: {
+      type: 'raster',
+      tiles: [
+        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      ],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    },
+  },
+  layers: [{ id: 'carto', type: 'raster', source: 'carto' }],
+};
 
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+let map = null;
 
-  ctx.fillStyle = '#0d1117';
-  ctx.fillRect(0, 0, w, h);
+export function destroyMap() {
+  if (map) { map.remove(); map = null; }
+}
 
-  ctx.strokeStyle = 'rgba(255,255,255,.04)';
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 6; i++) {
-    const y = (h / 6) * i;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-  }
-  for (let i = 0; i <= 12; i++) {
-    const x = (w / 12) * i;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-  }
-
-  const project = (lat, lon) => {
-    const x = ((lon + 180) / 360) * w;
-    const latRad = (lat * Math.PI) / 180;
-    const mercN = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-    return { x, y: h / 2 - (w * mercN) / (2 * Math.PI) };
+function pointsToGeoJson(points) {
+  return {
+    type: 'FeatureCollection',
+    features: points
+      .filter((p) => p.lat != null && p.lon != null)
+      .map((p) => ({
+        type: 'Feature',
+        properties: { city: p.city || '', country: p.country || '' },
+        geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
+      })),
   };
+}
 
-  for (const p of points) {
-    if (p.lat == null || p.lon == null) continue;
-    const { x, y } = project(Number(p.lat), Number(p.lon));
+function renderMap(container, points) {
+  if (map) { map.remove(); map = null; }
 
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, 15);
-    glow.addColorStop(0, 'rgba(254,44,85,.55)');
-    glow.addColorStop(1, 'rgba(254,44,85,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fill();
+  map = new maplibregl.Map({
+    container,
+    style: BASEMAP_STYLE,
+    center: [10, 20],
+    zoom: 1.1,
+    attributionControl: { compact: true },
+  });
 
-    ctx.fillStyle = '#fe2c55';
-    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
-  }
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  map.scrollZoom.disable();
 
-  if (!points.length) {
-    ctx.fillStyle = 'rgba(255,255,255,.18)';
-    ctx.font = '13px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Sin usuarios activos en este momento', w / 2, h / 2);
-  }
+  map.on('load', () => {
+    map.addSource('points', {
+      type: 'geojson',
+      data: pointsToGeoJson(points),
+      cluster: true,
+      clusterMaxZoom: 9,
+      clusterRadius: 40,
+    });
+
+    map.addLayer({
+      id: 'clusters',
+      type: 'circle',
+      source: 'points',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#fe2c55',
+        'circle-opacity': 0.75,
+        'circle-radius': ['step', ['get', 'point_count'], 14, 5, 20, 20, 28],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(254,44,85,.25)',
+      },
+    });
+
+    map.addLayer({
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'points',
+      filter: ['has', 'point_count'],
+      layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 12, 'text-font': ['Noto Sans Bold'] },
+      paint: { 'text-color': '#fff' },
+    });
+
+    map.addLayer({
+      id: 'point',
+      type: 'circle',
+      source: 'points',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': '#fe2c55',
+        'circle-radius': 6,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#fff',
+      },
+    });
+
+    map.on('click', 'clusters', (e) => {
+      const feature = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
+      const clusterId = feature.properties.cluster_id;
+      map.getSource('points').getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err) return;
+        map.easeTo({ center: feature.geometry.coordinates, zoom });
+      });
+    });
+
+    map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
+
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+    map.on('mouseenter', 'point', (e) => {
+      map.getCanvas().style.cursor = 'pointer';
+      const p = e.features[0].properties;
+      const label = [p.city, p.country].filter(Boolean).join(', ') || 'Ubicacion desconocida';
+      popup.setLngLat(e.features[0].geometry.coordinates).setHTML(`<span style="font-size:12px">${label}</span>`).addTo(map);
+    });
+    map.on('mouseleave', 'point', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+  });
 }
 
 export async function geoPage(view) {
@@ -68,7 +132,7 @@ export async function geoPage(view) {
     api.get('/api/dashboard/geo/countries?limit=20'),
   ]);
 
-  const canvas = el('canvas', { id: 'map-canvas' });
+  const mapDiv = el('div', { id: 'map-canvas' });
 
   view.replaceChildren(
     el('div', { class: 'page-head' },
@@ -79,7 +143,7 @@ export async function geoPage(view) {
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
       el('div', { class: 'section-title', text: 'Usuarios activos ahora' }),
       el('div', { id: 'map-wrap' },
-        canvas,
+        mapDiv,
         el('div', { class: 'map-badge' }, 'Activos: ', el('b', { text: String(points.length) }))
       )
     ),
@@ -114,14 +178,7 @@ export async function geoPage(view) {
     )
   );
 
-  renderMap(canvas, points);
-
-  // Redibujar al cambiar de tamano: el canvas no es responsive por si solo.
-  const onResize = () => {
-    if (!document.body.contains(canvas)) return window.removeEventListener('resize', onResize);
-    renderMap(canvas, points);
-  };
-  window.addEventListener('resize', onResize);
+  renderMap(mapDiv, points);
 
   if (countries.length) {
     barChart(
