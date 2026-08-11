@@ -133,33 +133,66 @@ async function patch(id, body) {
   return rows[0] || null;
 }
 
-// Ficha destacada a mano desde el panel (sin telemetria real detras: sin
-// machine_id). Sirve para creadores curados que la app todavia no rastreo.
-// user_id opcional: pasalo para sumar otra red social a un creador manual
-// que ya existe, asi el drawer los agrupa igual que a los reales.
+// Ficha destacada a mano desde el panel (sin telemetria real detras). Como
+// creators.user_id apunta con FK a installs(user_id), no alcanza con
+// inventar un user_id: se crea tambien una "instalacion" sintetica minima
+// (machine_id manual:<platform>:<username>) para que la referencia sea
+// valida y el drawer pueda agrupar "otros canales del mismo usuario" igual
+// que con creadores reales. user_id opcional: pasalo (el que devolvio una
+// llamada anterior) para sumar otra red social al mismo creador manual.
 async function createManual({ platform, username, display_name, channel_url, avatar_url, user_id }) {
   platform = String(platform || '').trim().toLowerCase();
   username = String(username || '').trim().replace(/^@+/, '');
   if (!platform) throw new Error('falta platform');
   if (!username) throw new Error('falta username');
 
-  const { rows } = await query(
-    `INSERT INTO creators
-       (platform, username, user_id, display_name, channel_url, avatar_url, is_public)
-     VALUES ($1,$2,$3,$4,$5,$6,TRUE)
-     ON CONFLICT (platform, username) DO UPDATE SET
-       user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
-       display_name = COALESCE(EXCLUDED.display_name, creators.display_name),
-       channel_url  = COALESCE(EXCLUDED.channel_url, creators.channel_url),
-       avatar_url   = COALESCE(EXCLUDED.avatar_url, creators.avatar_url),
-       is_public    = TRUE
-     RETURNING *`,
-    [
-      platform, username, user_id || newUserId(),
-      display_name || null, channel_url || null, avatar_url || null,
-    ]
-  );
-  return rows[0];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    let finalUserId = user_id || null;
+    if (finalUserId) {
+      const { rows } = await client.query('SELECT 1 FROM installs WHERE user_id = $1', [finalUserId]);
+      if (!rows.length) finalUserId = null; // user_id no existe: se ignora, se crea uno nuevo
+    }
+
+    if (!finalUserId) {
+      finalUserId = newUserId();
+      const machineId = `manual:${platform}:${username}`;
+      await client.query(
+        `INSERT INTO installs (machine_id, user_id)
+         VALUES ($1,$2)
+         ON CONFLICT (machine_id) DO NOTHING`,
+        [machineId, finalUserId]
+      );
+      // Si el machine_id sintetico ya existia (re-guardar la misma ficha),
+      // usar el user_id que ya tenia en vez del que acabamos de generar.
+      const { rows } = await client.query('SELECT user_id FROM installs WHERE machine_id = $1', [machineId]);
+      finalUserId = rows[0].user_id;
+    }
+
+    const { rows } = await client.query(
+      `INSERT INTO creators
+         (platform, username, user_id, display_name, channel_url, avatar_url, is_public)
+       VALUES ($1,$2,$3,$4,$5,$6,TRUE)
+       ON CONFLICT (platform, username) DO UPDATE SET
+         user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
+         display_name = COALESCE(EXCLUDED.display_name, creators.display_name),
+         channel_url  = COALESCE(EXCLUDED.channel_url, creators.channel_url),
+         avatar_url   = COALESCE(EXCLUDED.avatar_url, creators.avatar_url),
+         is_public    = TRUE
+       RETURNING *`,
+      [platform, username, finalUserId, display_name || null, channel_url || null, avatar_url || null]
+    );
+
+    await client.query('COMMIT');
+    return rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 const BULK_ACTIONS = {
