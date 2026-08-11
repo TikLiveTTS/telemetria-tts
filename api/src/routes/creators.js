@@ -34,6 +34,11 @@ router.get('/', wrap(async (req) => {
   return { ...data, stats };
 }));
 
+router.post('/', wrap(async (req) => {
+  const { platform, username, display_name, channel_url, avatar_url, user_id } = req.body || {};
+  return c.createManual({ platform, username, display_name, channel_url, avatar_url, user_id });
+}));
+
 router.get('/:id', wrap(async (req) => {
   const found = await c.detail(req.params.id);
   if (!found) throw new Error('creador no encontrado');

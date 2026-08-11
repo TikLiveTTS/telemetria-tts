@@ -90,6 +90,7 @@ export async function creatorsPage(view) {
         checkbox('Solo nuevos (24h)', ui.onlyNew, (v) => { ui.onlyNew = v; ui.page = 1; load(); }),
         checkbox('Incluir ocultos', ui.includeHidden, (v) => { ui.includeHidden = v; ui.page = 1; load(); }),
         el('a', { class: 'btn btn-sm', href: '/api/export/creators.csv' }, '⬇ CSV'),
+        el('button', { class: 'btn btn-sm btn-accent', onclick: openAddModal }, '+ Destacar creador'),
       )
     ),
     bulkbar,
@@ -359,6 +360,59 @@ async function showDetail(id) {
       [{ label: 'Seguidores', data: c.history.map((h) => h.followers), color: COLORS.accent }]
     );
   }
+}
+
+// Ficha manual, sin telemetria real detras (ej. creadores curados a mano en
+// la web, que todavia no instalaron/usaron la app). Queda marcada publica de
+// una para que salga en el widget de la landing.
+function openAddModal() {
+  const platformSel = select(
+    [['tiktok', 'TikTok'], ['twitch', 'Twitch'], ['youtube', 'YouTube'], ['kick', 'Kick']],
+    'tiktok', () => {}
+  );
+  const username = el('input', { class: 'field', style: 'width:100%', placeholder: '@usuario (sin la @)' });
+  const displayName = el('input', { class: 'field', style: 'width:100%', placeholder: 'Nombre para mostrar (opcional)' });
+  const channelUrl = el('input', { class: 'field', style: 'width:100%', placeholder: 'https://... link al canal' });
+  const avatarUrl = el('input', { class: 'field', style: 'width:100%', placeholder: 'https://... foto de perfil (opcional)' });
+  const userId = el('input', {
+    class: 'field', style: 'width:100%',
+    placeholder: 'ID interno existente (opcional, para sumar otra red al mismo creador)',
+  });
+  const errBox = el('div', { class: 'login-error' });
+
+  const confirm = el('button', { class: 'btn btn-sm btn-accent', onclick: async () => {
+    if (!username.value.trim()) { errBox.textContent = 'Falta el usuario'; return; }
+
+    try {
+      await api.post('/api/dashboard/creators', {
+        platform: platformSel.value,
+        username: username.value.trim(),
+        display_name: displayName.value.trim() || null,
+        channel_url: channelUrl.value.trim() || null,
+        avatar_url: avatarUrl.value.trim() || null,
+        user_id: userId.value.trim() || null,
+      });
+      toast('Creador destacado');
+      closeModal();
+      await load();
+    } catch (err) {
+      errBox.textContent = err.message;
+    }
+  } }, 'Guardar');
+
+  openModal(
+    el('h3', { text: 'Destacar creador a mano' }),
+    el('p', { class: 'dim', style: 'font-size:var(--fs-sm);margin-bottom:var(--s-4)' },
+      'Para creadores curados que todavia no aparecen por telemetria real. Queda marcado publico de una.'),
+    el('div', { class: 'stack', style: 'display:flex;flex-direction:column;gap:8px' },
+      platformSel, username, displayName, channelUrl, avatarUrl, userId
+    ),
+    errBox,
+    el('div', { class: 'modal-actions' },
+      el('button', { class: 'btn btn-sm', onclick: closeModal }, 'Cancelar'),
+      confirm,
+    )
+  );
 }
 
 function openMergeModal(c) {

@@ -26,7 +26,7 @@ export function minutes(m) {
 
 // Nombre legible por plataforma. platformPill() sigue usando la clave en
 // minuscula para la clase CSS (pill-tiktok, etc.), solo el texto cambia.
-export const PLATFORM_LABELS = { tiktok: 'TikTok', twitch: 'Twitch', youtube: 'YouTube' };
+export const PLATFORM_LABELS = { tiktok: 'TikTok', twitch: 'Twitch', youtube: 'YouTube', kick: 'Kick' };
 
 // Nombre legible por conector. Compartido entre Funciones y Sesiones.
 export const CONNECTOR_LABELS = {

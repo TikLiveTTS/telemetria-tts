@@ -1,6 +1,11 @@
 'use strict';
 
+const crypto = require('crypto');
 const { query, pool } = require('../db');
+
+function newUserId() {
+  return 'usr_' + crypto.randomBytes(4).toString('hex');
+}
 
 const SORTS = {
   last_seen: 'c.last_seen_at DESC',
@@ -128,6 +133,35 @@ async function patch(id, body) {
   return rows[0] || null;
 }
 
+// Ficha destacada a mano desde el panel (sin telemetria real detras: sin
+// machine_id). Sirve para creadores curados que la app todavia no rastreo.
+// user_id opcional: pasalo para sumar otra red social a un creador manual
+// que ya existe, asi el drawer los agrupa igual que a los reales.
+async function createManual({ platform, username, display_name, channel_url, avatar_url, user_id }) {
+  platform = String(platform || '').trim().toLowerCase();
+  username = String(username || '').trim().replace(/^@+/, '');
+  if (!platform) throw new Error('falta platform');
+  if (!username) throw new Error('falta username');
+
+  const { rows } = await query(
+    `INSERT INTO creators
+       (platform, username, user_id, display_name, channel_url, avatar_url, is_public)
+     VALUES ($1,$2,$3,$4,$5,$6,TRUE)
+     ON CONFLICT (platform, username) DO UPDATE SET
+       user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
+       display_name = COALESCE(EXCLUDED.display_name, creators.display_name),
+       channel_url  = COALESCE(EXCLUDED.channel_url, creators.channel_url),
+       avatar_url   = COALESCE(EXCLUDED.avatar_url, creators.avatar_url),
+       is_public    = TRUE
+     RETURNING *`,
+    [
+      platform, username, user_id || newUserId(),
+      display_name || null, channel_url || null, avatar_url || null,
+    ]
+  );
+  return rows[0];
+}
+
 const BULK_ACTIONS = {
   publish: 'is_public = TRUE',
   unpublish: 'is_public = FALSE',
@@ -233,4 +267,4 @@ async function publicList(limit = 200) {
   }));
 }
 
-module.exports = { list, stats, detail, patch, bulk, forceResolve, merge, publicList };
+module.exports = { list, stats, detail, patch, bulk, forceResolve, merge, publicList, createManual };

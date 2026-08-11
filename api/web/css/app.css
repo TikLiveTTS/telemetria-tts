@@ -179,6 +179,7 @@ tbody tr.clickable { cursor: pointer; }
 .pill-tiktok  { background: rgba(254,44,85,.14);  color: var(--accent); }
 .pill-twitch  { background: rgba(145,70,255,.16); color: var(--twitch); }
 .pill-youtube { background: rgba(255,68,68,.14);  color: var(--youtube); }
+.pill-kick    { background: rgba(83,252,10,.14);  color: #53fc0a; }
 
 .mono { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
 .dim  { color: var(--muted); }
