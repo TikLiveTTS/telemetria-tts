@@ -52,7 +52,7 @@ function issueCookie(res) {
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false, // se expone por HTTP plano; poner true al montar TLS
+    secure: true,
     maxAge: maxAgeMs,
     path: '/',
   });

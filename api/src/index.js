@@ -13,6 +13,7 @@ const jobs = require('./jobs');
 const { ingestHandler, legacyPingHandler } = require('./ingest');
 const { makeRateLimit } = require('./middleware/rateLimit');
 const { requireAuth } = require('./middleware/requireAuth');
+const { requireIngestToken } = require('./middleware/requireIngestToken');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -54,8 +55,8 @@ app.use(healthRoutes);
 app.use(publicRoutes);
 
 const ingestLimit = makeRateLimit({ max: 60, windowMs: 60 * 1000 });
-app.post('/api/ingest', ingestLimit, ingestHandler);
-app.post('/api/ping', ingestLimit, legacyPingHandler);
+app.post('/api/ingest', requireIngestToken, ingestLimit, ingestHandler);
+app.post('/api/ping', requireIngestToken, ingestLimit, legacyPingHandler);
 
 app.use('/api/auth', authRoutes);
 

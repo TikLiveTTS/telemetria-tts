@@ -32,6 +32,8 @@ const config = {
   sessionSecret: required('SESSION_SECRET'),
   sessionHours: int('SESSION_HOURS', 12),
 
+  ingestToken: required('INGEST_TOKEN'),
+
   retentionDays: int('RETENTION_DAYS', 365),
   anonymizeIp: bool('ANONYMIZE_IP', false),
   trustProxy: bool('TRUST_PROXY', false),
