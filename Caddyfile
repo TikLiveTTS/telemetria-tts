@@ -1,3 +1,7 @@
-telemetria.tiklivetts.es {
+{
+	auto_https off
+}
+
+:80 {
 	reverse_proxy api:4000
 }
