@@ -41,6 +41,8 @@ app.use(helmet({
       // MapLibre pide los tiles del mapa (Geografia) con fetch(), no <img>:
       // sin esto connect-src los bloquea aunque img-src ya los permita.
       connectSrc: ["'self'", 'https://*.basemaps.cartocdn.com'],
+      // MapLibre procesa los tiles en un Web Worker cargado desde un blob:.
+      workerSrc: ["'self'", 'blob:'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
     },

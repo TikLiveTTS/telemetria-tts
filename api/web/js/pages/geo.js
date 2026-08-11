@@ -80,15 +80,6 @@ function renderMap(container, points) {
     });
 
     map.addLayer({
-      id: 'cluster-count',
-      type: 'symbol',
-      source: 'points',
-      filter: ['has', 'point_count'],
-      layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 12, 'text-font': ['Noto Sans Bold'] },
-      paint: { 'text-color': '#fff' },
-    });
-
-    map.addLayer({
       id: 'point',
       type: 'circle',
       source: 'points',
