@@ -55,7 +55,7 @@ async function list({ page = 1, pageSize = 50, sort = 'last_seen', platform, q, 
                 ) AS rn
            FROM creators c
            ${clause}
-       ) grouped
+       ) c
       WHERE rn = 1
       ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
