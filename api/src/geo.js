@@ -34,6 +34,7 @@ function normalizeIp(raw) {
 // Extrae la IP del cliente. Solo confia en X-Forwarded-For si TRUST_PROXY
 // esta activo: con el puerto expuesto directo, cualquiera podria falsearla.
 function clientIp(req) {
+  console.log('[debug-ip] trustProxy=%s xff=%s socket=%s', config.trustProxy, req.headers['x-forwarded-for'], req.socket.remoteAddress);
   if (config.trustProxy) {
     const fwd = req.headers['x-forwarded-for'];
     if (fwd) {
