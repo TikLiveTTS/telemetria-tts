@@ -223,7 +223,12 @@ function row(c) {
         : null,
       el('div', { style: 'margin-top:2px' }, ...meta)
     ),
-    el('td', {}, platformPill(c.platform)),
+    el('td', {},
+      platformPill(c.platform),
+      c.platform_count > 1
+        ? el('span', { class: 'badge badge-mut', style: 'margin-left:4px', text: `+${c.platform_count - 1}` })
+        : null
+    ),
     el('td', { class: 'right nowrap', text: compact(c.follower_count) }),
     el('td', { class: 'right', text: num(c.total_sessions) }),
     el('td', { class: 'right nowrap', text: minutes(c.total_minutes) }),

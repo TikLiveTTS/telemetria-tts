@@ -28,16 +28,35 @@ async function list({ page = 1, pageSize = 50, sort = 'last_seen', platform, q, 
   const order = SORTS[sort] || SORTS.last_seen;
   params.push(pageSize, (page - 1) * pageSize);
 
+  // Un mismo usuario puede tener TikTok + Twitch + YouTube: son 3 filas en
+  // `creators` con el mismo user_id. Filtrando por plataforma o buscando texto
+  // se listan sueltas (tiene sentido ver justo esa ficha); en la vista general
+  // se colapsan a 1 fila por usuario (la de mas seguidores) y el resto queda a
+  // un click en el drawer via `siblings` (ver detail()).
+  const groupByUser = !platform && !q;
+  const partitionKey = groupByUser
+    ? "COALESCE(c.user_id, 'id:' || c.id::text)"
+    : "c.id::text";
+
   const { rows } = await query(
-    `SELECT c.id, c.platform, c.username, c.user_id, c.display_name,
-            c.channel_url, c.avatar_url, c.follower_count, c.peak_followers,
-            c.country, c.app_version, c.resolve_count, c.force_resolve,
-            c.first_seen_at, c.last_seen_at, c.total_sessions, c.total_minutes,
-            c.is_public, c.is_hidden, c.featured_order, c.notes,
-            (c.first_seen_at > NOW() - INTERVAL '24 hours') AS is_new,
+    `SELECT id, platform, username, user_id, display_name,
+            channel_url, avatar_url, follower_count, peak_followers,
+            country, app_version, resolve_count, force_resolve,
+            first_seen_at, last_seen_at, total_sessions, total_minutes,
+            is_public, is_hidden, featured_order, notes, is_new, platform_count,
             COUNT(*) OVER ()::int AS total_rows
-       FROM creators c
-       ${clause}
+       FROM (
+         SELECT c.*,
+                (c.first_seen_at > NOW() - INTERVAL '24 hours') AS is_new,
+                COUNT(*) OVER (PARTITION BY ${partitionKey})::int AS platform_count,
+                ROW_NUMBER() OVER (
+                  PARTITION BY ${partitionKey}
+                  ORDER BY c.follower_count DESC NULLS LAST, c.last_seen_at DESC
+                ) AS rn
+           FROM creators c
+           ${clause}
+       ) grouped
+      WHERE rn = 1
       ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
@@ -49,10 +68,11 @@ async function list({ page = 1, pageSize = 50, sort = 'last_seen', platform, q, 
 
 async function stats() {
   const { rows } = await query(
-    `SELECT COUNT(*)::int AS total,
+    `SELECT COUNT(DISTINCT COALESCE(user_id, 'id:' || id::text))::int AS total,
             COUNT(*) FILTER (WHERE is_public)::int AS public,
             COUNT(*) FILTER (WHERE is_hidden)::int AS hidden,
-            COUNT(*) FILTER (WHERE first_seen_at > NOW() - INTERVAL '24 hours')::int AS new_today
+            COUNT(DISTINCT COALESCE(user_id, 'id:' || id::text))
+              FILTER (WHERE first_seen_at > NOW() - INTERVAL '24 hours')::int AS new_today
        FROM creators`
   );
   return rows[0];
