@@ -2,26 +2,9 @@ import { api } from '../api.js';
 import { el, num, minutes, skeleton } from '../format.js';
 import { barChart } from '../charts.js';
 
-// Mapa real con MapLibre GL, sin API key: tiles gratis de CARTO (Positron,
-// raster). El estilo se define inline (sin fetch a un style.json externo) asi
-// no hace falta tocar la CSP mas alla de imgSrc, que ya permite https:.
-const BASEMAP_STYLE = {
-  version: 8,
-  sources: {
-    carto: {
-      type: 'raster',
-      tiles: [
-        'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        'https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        'https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        'https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-      ],
-      tileSize: 256,
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    },
-  },
-  layers: [{ id: 'carto', type: 'raster', source: 'carto' }],
-};
+// Mapa real con MapLibre GL, sin API key: estilo vectorial gratis de CARTO
+// (Positron) con sus propios tiles/sprite/glyphs, nitido a cualquier zoom.
+const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 let map = null;
 
@@ -43,7 +26,7 @@ function pointsToGeoJson(points) {
 }
 
 function renderMap(container, points) {
-  if (map) { map.remove(); map = null; }
+  destroyMap();
 
   map = new maplibregl.Map({
     container,
@@ -54,7 +37,7 @@ function renderMap(container, points) {
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
-  map.scrollZoom.disable();
+  map.addControl(new maplibregl.FullscreenControl(), 'top-left');
 
   map.on('load', () => {
     map.addSource('points', {
@@ -77,6 +60,15 @@ function renderMap(container, points) {
         'circle-stroke-width': 2,
         'circle-stroke-color': 'rgba(254,44,85,.25)',
       },
+    });
+
+    map.addLayer({
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'points',
+      filter: ['has', 'point_count'],
+      layout: { 'text-field': '{point_count_abbreviated}', 'text-size': 12, 'text-font': ['Noto Sans Bold'] },
+      paint: { 'text-color': '#fff' },
     });
 
     map.addLayer({
@@ -115,10 +107,26 @@ function renderMap(container, points) {
   });
 }
 
+function statCard(count, trendPct) {
+  const trend = trendPct == null
+    ? null
+    : el('div', {
+        class: 'map-trend',
+        style: `color:${trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)'}`,
+        text: `${trendPct >= 0 ? '↗' : '↘'} ${Math.abs(trendPct)}% vs 5 min atras`,
+      });
+
+  return el('div', { class: 'map-stat-card' },
+    el('div', { class: 'map-stat-label', text: 'Usuarios activos' }),
+    el('div', { class: 'map-stat-value', text: num(count) }),
+    trend
+  );
+}
+
 export async function geoPage(view) {
   view.append(skeleton(3));
 
-  const [points, countries] = await Promise.all([
+  const [live, countries] = await Promise.all([
     api.get('/api/dashboard/geo/live'),
     api.get('/api/dashboard/geo/countries?limit=20'),
   ]);
@@ -135,7 +143,7 @@ export async function geoPage(view) {
       el('div', { class: 'section-title', text: 'Usuarios activos ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
-        el('div', { class: 'map-badge' }, 'Activos: ', el('b', { text: String(points.length) }))
+        statCard(live.count, live.trendPct)
       )
     ),
 
@@ -169,7 +177,7 @@ export async function geoPage(view) {
     )
   );
 
-  renderMap(mapDiv, points);
+  renderMap(mapDiv, live.points);
 
   if (countries.length) {
     barChart(

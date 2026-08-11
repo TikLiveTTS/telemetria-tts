@@ -125,15 +125,29 @@ async function countries(limit = 10) {
   return rows;
 }
 
-// Puntos del mapa: solo instalaciones con heartbeat reciente.
+// Puntos del mapa: solo instalaciones con heartbeat reciente. Tambien
+// compara contra la ventana de 5 minutos anterior, para la tendencia de la
+// tarjeta "Usuarios activos" (variacion real, no inventada).
 async function liveMap() {
-  const { rows } = await query(
-    `SELECT s.lat, s.lon, s.city, s.country
-       FROM sessions s
-      WHERE s.last_heartbeat_at > NOW() - INTERVAL '5 minutes'
-        AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
-  );
-  return rows;
+  const [{ rows: points }, { rows: counts }] = await Promise.all([
+    query(
+      `SELECT s.lat, s.lon, s.city, s.country
+         FROM sessions s
+        WHERE s.last_heartbeat_at > NOW() - INTERVAL '5 minutes'
+          AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
+    ),
+    query(
+      `SELECT
+         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '5 minutes')::int AS now,
+         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '10 minutes'
+                             AND last_heartbeat_at <= NOW() - INTERVAL '5 minutes')::int AS prev
+         FROM sessions`
+    ),
+  ]);
+
+  const { now, prev } = counts[0];
+  const trendPct = prev > 0 ? Math.round(((now - prev) / prev) * 100) : null;
+  return { points, count: now, trendPct };
 }
 
 async function versions() {
