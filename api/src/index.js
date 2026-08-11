@@ -38,7 +38,9 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'https:'], // avatares de TikTok/Twitch/YouTube
-      connectSrc: ["'self'"],
+      // MapLibre pide los tiles del mapa (Geografia) con fetch(), no <img>:
+      // sin esto connect-src los bloquea aunque img-src ya los permita.
+      connectSrc: ["'self'", 'https://*.basemaps.cartocdn.com'],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
     },
