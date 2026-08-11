@@ -131,7 +131,7 @@ async function countries(limit = 10) {
 async function liveMap() {
   const [{ rows: points }, { rows: counts }] = await Promise.all([
     query(
-      `SELECT s.lat, s.lon, s.city, s.country
+      `SELECT s.lat, s.lon, s.city, s.country, s.country_code
          FROM sessions s
         WHERE s.last_heartbeat_at > NOW() - INTERVAL '5 minutes'
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`

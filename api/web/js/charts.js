@@ -39,6 +39,21 @@ function build(canvas, config) {
   return chart;
 }
 
+// Actualiza un chart vivo en vez de destruirlo y recrearlo (usado por los
+// refrescos periodicos). El numero de labels puede cambiar entre refrescos
+// (ej. aparece una version nueva), asi que el doughnut regenera sus colores.
+export function updateChart(chart, labels, dataArrays) {
+  chart.data.labels = labels;
+  dataArrays.forEach((data, i) => {
+    if (!chart.data.datasets[i]) return;
+    chart.data.datasets[i].data = data;
+  });
+  if (chart.config.type === 'doughnut') {
+    chart.data.datasets[0].backgroundColor = labels.map((_, i) => SERIES[i % SERIES.length]);
+  }
+  chart.update();
+}
+
 const axis = (extra = {}) => ({
   ticks: { color: COLORS.muted, font: { size: 10 }, ...extra },
   grid: { color: GRID, drawBorder: false },

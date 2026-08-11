@@ -18,10 +18,52 @@ export function compact(n) {
 
 export function minutes(m) {
   if (m == null) return '—';
-  const v = Number(m);
+  const v = Math.round(Number(m));
   if (v < 60) return `${v}m`;
   const h = Math.floor(v / 60);
   return `${h}h ${v % 60}m`;
+}
+
+// Nombre legible por plataforma. platformPill() sigue usando la clave en
+// minuscula para la clase CSS (pill-tiktok, etc.), solo el texto cambia.
+export const PLATFORM_LABELS = { tiktok: 'TikTok', twitch: 'Twitch', youtube: 'YouTube' };
+
+// Nombre legible por conector. Compartido entre Funciones y Sesiones.
+export const CONNECTOR_LABELS = {
+  app: 'App', creators: 'Creadores', platforms: 'Plataformas', errors: 'Errores',
+  tts: 'TTS', music: 'Musica', soundpad: 'Soundpad', obs: 'OBS',
+  mobile: 'Movil', overlays: 'Overlays', moderation: 'Moderacion',
+  updates: 'Actualizaciones', settings: 'Ajustes',
+};
+
+// tts_queue_overflow -> "Tts queue overflow". Cosmetico: el nombre tecnico
+// original va como title (tooltip) en el llamador, nunca se pierde del todo.
+export function prettyEvent(name) {
+  const s = String(name || '').replace(/[_.]/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : name;
+}
+
+// Nombre de pais en español via Intl.DisplayNames. Sin mapa a mano: cubre
+// casi todos los codigos ISO automaticamente. Cae al string crudo si el
+// codigo falta o el navegador no soporta la API.
+let regionNames = null;
+try { regionNames = new Intl.DisplayNames(['es'], { type: 'region' }); } catch (_) { /* navegador viejo */ }
+
+export function countryName(code, fallback) {
+  if (code && regionNames) {
+    try {
+      const name = regionNames.of(String(code).toUpperCase());
+      if (name) return name;
+    } catch (_) { /* codigo invalido */ }
+  }
+  return fallback || '—';
+}
+
+// ["a","b","c","d","e","f"] -> "a, b, c, d, e +1 mas"
+export function truncatedList(items, max = 5) {
+  if (!items || !items.length) return '—';
+  if (items.length <= max) return items.join(', ');
+  return `${items.slice(0, max).join(', ')} +${items.length - max} mas`;
 }
 
 export function date(ts) {
@@ -72,7 +114,7 @@ export function clear(node) {
 }
 
 export function platformPill(platform) {
-  return el('span', { class: `pill pill-${platform}`, text: platform });
+  return el('span', { class: `pill pill-${platform}`, text: PLATFORM_LABELS[platform] || platform });
 }
 
 // Avatar con fallback a la inicial: las URLs de TikTok caducan.

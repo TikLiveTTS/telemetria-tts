@@ -2,6 +2,7 @@ import { api, qs } from '../api.js';
 import { el, clear, num, compact, minutes, date, relative, avatar, platformPill, toast, skeleton } from '../format.js';
 import { lineChart, COLORS, destroyCharts } from '../charts.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
+import { openModal, closeModal } from '../modal.js';
 
 // Estado de la tabla. Persiste mientras no se recargue la pagina, para que
 // filtrar y volver del detalle no reinicie los filtros.
@@ -152,8 +153,11 @@ async function bulk(action) {
   }
 }
 
-async function load() {
-  clear(tbody).append(el('tr', {}, el('td', { colspan: 9 }, skeleton(3))));
+// silent evita el flash de skeleton en los refrescos periodicos: se ve mejor
+// dejar la tabla vieja hasta que llegan los datos nuevos que parpadear cada
+// vez, y no interrumpe si el usuario esta con el mouse sobre una fila.
+async function load({ silent = false } = {}) {
+  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 9 }, skeleton(3))));
 
   const data = await api.get('/api/dashboard/creators' + qs({
     page: ui.page, pageSize: ui.pageSize, sort: ui.sort,
@@ -185,8 +189,12 @@ async function load() {
   for (const c of data.rows) tbody.append(row(c));
 }
 
+export async function creatorsRefresh() {
+  await load({ silent: true });
+}
+
 function row(c) {
-  const cb = el('input', { type: 'checkbox', dataset: { id: c.id } });
+  const cb = el('input', { type: 'checkbox', dataset: { id: c.id }, checked: ui.selected.has(c.id) || null });
   cb.addEventListener('click', (e) => e.stopPropagation());
   cb.addEventListener('change', () => toggleSelect(c.id, cb.checked));
 
@@ -208,9 +216,17 @@ function row(c) {
     onclick: (e) => e.stopPropagation(),
   }, `@${c.username} ↗`);
 
-  const meta = [el('span', { class: 'mono', text: c.user_id || 'sin usuario' })];
+  const meta = [el('span', {
+    class: 'mono', title: 'Identificador interno de la instalacion, no es un nombre de usuario',
+    text: c.user_id ? `ID: ${c.user_id}` : 'sin usuario',
+  })];
   if (c.is_new) meta.push(' ', el('span', { class: 'badge badge-new', text: 'NUEVO' }));
-  if (c.resolve_count < 2) meta.push(' ', el('span', { class: 'badge badge-mut', text: `resuelto ${c.resolve_count}/2` }));
+  if (c.resolve_count < 2) {
+    meta.push(' ', el('span', {
+      class: 'badge badge-mut', text: `resuelto ${c.resolve_count}/2`,
+      title: 'Veces que verificamos automaticamente la identidad de este canal (maximo 2)',
+    }));
+  }
   if (c.is_hidden) meta.push(' ', el('span', { class: 'badge badge-mut', text: 'OCULTO' }));
 
   const tr = el('tr', { class: 'clickable', onclick: () => showDetail(c.id) },
@@ -267,7 +283,8 @@ async function showDetail(id) {
       : null,
 
     el('dl', { class: 'kv' },
-      el('dt', { text: 'Usuario' }),   el('dd', { class: 'mono', text: c.user_id || '—' }),
+      el('dt', { text: 'ID interno' }),
+      el('dd', { class: 'mono', title: 'Identificador interno de la instalacion, no es un nombre de usuario', text: c.user_id || '—' }),
       el('dt', { text: 'Seguidores' }), el('dd', { text: `${num(c.follower_count)} (pico ${num(c.peak_followers)})` }),
       el('dt', { text: 'Sesiones' }),  el('dd', { text: num(c.total_sessions) }),
       el('dt', { text: 'Tiempo total' }), el('dd', { text: minutes(c.total_minutes) }),
@@ -275,7 +292,11 @@ async function showDetail(id) {
       el('dt', { text: 'Ultima vez' }),  el('dd', { text: date(c.last_seen_at) }),
       el('dt', { text: 'Pais' }),        el('dd', { text: c.country || '—' }),
       el('dt', { text: 'Version app' }), el('dd', { text: c.app_version ? `v${c.app_version}` : '—' }),
-      el('dt', { text: 'Resolucion' }),  el('dd', { text: `${c.resolve_count}/2${c.force_resolve ? ' · re-resolucion pendiente' : ''}` }),
+      el('dt', { text: 'Resolucion' }),
+      el('dd', {
+        title: 'Veces que verificamos automaticamente la identidad de este canal (maximo 2)',
+        text: `${c.resolve_count}/2${c.force_resolve ? ' · re-resolucion pendiente' : ''}`,
+      }),
     ),
   ];
 
@@ -317,7 +338,7 @@ async function showDetail(id) {
           toast('Se volvera a resolver en la proxima conexion de la app');
         } catch (err) { toast(err.message, true); }
       } }, 'Re-resolver'),
-      el('button', { class: 'btn btn-sm', onclick: () => promptMerge(c) }, 'Fusionar'),
+      el('button', { class: 'btn btn-sm', onclick: () => openMergeModal(c) }, 'Fusionar'),
       el('button', { class: 'btn btn-sm', onclick: async () => {
         try {
           await api.patch(`/api/dashboard/creators/${c.id}`, { is_hidden: !c.is_hidden });
@@ -340,21 +361,38 @@ async function showDetail(id) {
   }
 }
 
-async function promptMerge(c) {
-  const otherId = window.prompt(
-    `Fusionar OTRA ficha dentro de @${c.username} (id ${c.id}).\n` +
-    'Escribe el id de la ficha que quieres absorber. Esa ficha se borrara y sus\n' +
-    'sesiones y minutos se sumaran a esta.'
-  );
-  if (!otherId) return;
+function openMergeModal(c) {
+  const input = el('input', {
+    class: 'field', type: 'number', min: '1', style: 'width:100%',
+    placeholder: 'ID de la ficha a absorber',
+  });
+  const errBox = el('div', { class: 'login-error' });
 
-  try {
-    await api.post('/api/dashboard/creators/merge', { keep_id: c.id, merge_id: Number(otherId) });
-    toast('Fichas fusionadas');
-    closeDrawer();
-    destroyCharts();
-    await load();
-  } catch (err) {
-    toast(err.message, true);
-  }
+  const confirm = el('button', { class: 'btn btn-sm btn-accent', onclick: async () => {
+    const mergeId = Number(input.value);
+    if (!mergeId) { errBox.textContent = 'Escribi un id valido'; return; }
+
+    try {
+      await api.post('/api/dashboard/creators/merge', { keep_id: c.id, merge_id: mergeId });
+      toast('Fichas fusionadas');
+      closeModal();
+      closeDrawer();
+      destroyCharts();
+      await load();
+    } catch (err) {
+      errBox.textContent = err.message;
+    }
+  } }, 'Fusionar');
+
+  openModal(
+    el('h3', { text: `Fusionar dentro de @${c.username}` }),
+    el('p', { class: 'dim', style: 'font-size:var(--fs-sm);margin-bottom:var(--s-4)' },
+      `La otra ficha (id de la instalacion duplicada, por ejemplo tras reinstalar) se borra y sus sesiones y minutos se suman a esta (id ${c.id}).`),
+    input,
+    errBox,
+    el('div', { class: 'modal-actions' },
+      el('button', { class: 'btn btn-sm', onclick: closeModal }, 'Cancelar'),
+      confirm,
+    )
+  );
 }

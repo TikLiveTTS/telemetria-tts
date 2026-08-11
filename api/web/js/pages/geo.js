@@ -1,15 +1,17 @@
 import { api } from '../api.js';
-import { el, num, minutes, skeleton } from '../format.js';
-import { barChart } from '../charts.js';
+import { el, num, minutes, skeleton, countryName } from '../format.js';
+import { barChart, updateChart } from '../charts.js';
 
 // Mapa real con MapLibre GL, sin API key: estilo vectorial gratis de CARTO
 // (Positron) con sus propios tiles/sprite/glyphs, nitido a cualquier zoom.
 const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
 let map = null;
+let mapReady = false;
 
 export function destroyMap() {
   if (map) { map.remove(); map = null; }
+  mapReady = false;
 }
 
 function pointsToGeoJson(points) {
@@ -19,10 +21,18 @@ function pointsToGeoJson(points) {
       .filter((p) => p.lat != null && p.lon != null)
       .map((p) => ({
         type: 'Feature',
-        properties: { city: p.city || '', country: p.country || '' },
+        properties: { city: p.city || '', country: countryName(p.country_code, p.country) },
         geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
       })),
   };
+}
+
+// Actualiza los puntos de un mapa YA cargado, sin recrearlo (usado por el
+// refresco periodico: recrear el mapa cada 60s reiniciaria zoom/posicion).
+export function updateMapPoints(points) {
+  if (!mapReady) return; // el proximo refresco lo toma cuando el mapa termine de cargar
+  const source = map.getSource('points');
+  if (source) source.setData(pointsToGeoJson(points));
 }
 
 function renderMap(container, points) {
@@ -92,7 +102,7 @@ function renderMap(container, points) {
     map.on('mouseenter', 'clusters', (e) => {
       map.getCanvas().style.cursor = 'pointer';
       const p = e.features[0].properties;
-      showPopup(e.features[0].geometry.coordinates, `<b>${p.point_count}</b> usuarios en esta zona`);
+      showPopup(e.features[0].geometry.coordinates, `<b>${p.point_count}</b> usuarios agrupados en esta zona del mapa (zoom para separarlos)`);
     });
     map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
 
@@ -103,26 +113,56 @@ function renderMap(container, points) {
       showPopup(e.features[0].geometry.coordinates, `<b>${label}</b><br>1 usuario`);
     });
     map.on('mouseleave', 'point', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+
+    mapReady = true;
   });
 }
 
+let statValueEl = null;
+let statTrendEl = null;
+
+function trendText(trendPct) {
+  if (trendPct == null) return '';
+  return `${trendPct >= 0 ? '↗' : '↘'} ${Math.abs(trendPct)}% vs 5 min atras`;
+}
+
 function statCard(count, trendPct) {
-  const trend = trendPct == null
-    ? null
-    : el('div', {
-        class: 'map-trend',
-        style: `color:${trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)'}`,
-        text: `${trendPct >= 0 ? '↗' : '↘'} ${Math.abs(trendPct)}% vs 5 min atras`,
-      });
+  statValueEl = el('div', { class: 'map-stat-value', text: num(count) });
+  statTrendEl = el('div', {
+    class: 'map-trend',
+    style: `color:${trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)'}`,
+    text: trendText(trendPct),
+  });
 
   return el('div', { class: 'map-stat-card' },
     el('div', { class: 'map-stat-label', text: 'Usuarios activos' }),
-    el('div', { class: 'map-stat-value', text: num(count) }),
-    trend
+    statValueEl,
+    statTrendEl
+  );
+}
+
+function updateStatCard(count, trendPct) {
+  if (!statValueEl) return;
+  statValueEl.textContent = num(count);
+  statTrendEl.style.color = trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)';
+  statTrendEl.textContent = trendText(trendPct);
+}
+
+let countriesChart = null;
+let countriesTbody = null;
+let renderId = 0;
+
+function countryRow(c) {
+  return el('tr', {},
+    el('td', { text: countryName(c.country_code, c.country) }),
+    el('td', { class: 'right', text: num(c.users) }),
+    el('td', { class: 'right', text: num(c.sessions) }),
+    el('td', { class: 'right nowrap', title: 'Tiempo total acumulado (formato h m)', text: minutes(c.minutes) })
   );
 }
 
 export async function geoPage(view) {
+  const myId = ++renderId;
   view.append(skeleton(3));
 
   const [live, countries] = await Promise.all([
@@ -130,12 +170,18 @@ export async function geoPage(view) {
     api.get('/api/dashboard/geo/countries?limit=20'),
   ]);
 
+  if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
+
   const mapDiv = el('div', { id: 'map-canvas' });
+  countriesTbody = el('tbody', {}, countries.length
+    ? countries.map(countryRow)
+    : el('tr', {}, el('td', { colspan: 4 }, el('div', { class: 'empty', text: 'Sin datos' })))
+  );
 
   view.replaceChildren(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Geografia' }),
-        el('div', { class: 'sub', text: 'Puntos en vivo: instalaciones con heartbeat en los ultimos 5 minutos' }))
+        el('div', { class: 'sub', text: 'Puntos en vivo: instalaciones con actividad en los ultimos 5 minutos' }))
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
@@ -161,15 +207,7 @@ export async function geoPage(view) {
               el('th', { class: 'right', text: 'Sesiones' }),
               el('th', { class: 'right', text: 'Tiempo' })
             )),
-            el('tbody', {}, countries.length
-              ? countries.map((c) => el('tr', {},
-                  el('td', { text: c.country || '—' }),
-                  el('td', { class: 'right', text: num(c.users) }),
-                  el('td', { class: 'right', text: num(c.sessions) }),
-                  el('td', { class: 'right nowrap', text: minutes(c.minutes) })
-                ))
-              : el('tr', {}, el('td', { colspan: 4 }, el('div', { class: 'empty', text: 'Sin datos' })))
-            )
+            countriesTbody
           )
         )
       )
@@ -178,12 +216,39 @@ export async function geoPage(view) {
 
   renderMap(mapDiv, live.points);
 
+  countriesChart = countries.length
+    ? barChart(
+        document.getElementById('c-countries'),
+        countries.slice(0, 10).map((c) => countryName(c.country_code, c.country)),
+        countries.slice(0, 10).map((c) => c.users),
+        { horizontal: true, label: 'Usuarios' }
+      )
+    : null;
+}
+
+// Refresco periodico: solo pide datos nuevos y los aplica al mapa/chart/tabla
+// existentes. Nunca destruye el mapa (perderia zoom/posicion) ni el chart.
+export async function geoRefresh() {
+  const myId = renderId;
+  const [live, countries] = await Promise.all([
+    api.get('/api/dashboard/geo/live'),
+    api.get('/api/dashboard/geo/countries?limit=20'),
+  ]);
+  if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
+
+  updateMapPoints(live.points);
+  updateStatCard(live.count, live.trendPct);
+
   if (countries.length) {
-    barChart(
-      document.getElementById('c-countries'),
-      countries.slice(0, 10).map((c) => c.country || '—'),
-      countries.slice(0, 10).map((c) => c.users),
-      { horizontal: true, label: 'Usuarios' }
-    );
+    const labels = countries.slice(0, 10).map((c) => countryName(c.country_code, c.country));
+    const data = countries.slice(0, 10).map((c) => c.users);
+    if (countriesChart) updateChart(countriesChart, labels, [data]);
+    else countriesChart = barChart(document.getElementById('c-countries'), labels, data, { horizontal: true, label: 'Usuarios' });
+  }
+
+  if (countriesTbody) {
+    countriesTbody.replaceChildren(...(countries.length
+      ? countries.map(countryRow)
+      : [el('tr', {}, el('td', { colspan: 4 }, el('div', { class: 'empty', text: 'Sin datos' })))]));
   }
 }

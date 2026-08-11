@@ -23,7 +23,7 @@ export async function settingsPage(view) {
         el('dl', { class: 'kv' },
           el('dt', { text: 'Zona horaria' }),  el('dd', { text: s.timezone }),
           el('dt', { text: 'Retencion' }),     el('dd', { text: `${s.retention_days} dias de eventos crudos` }),
-          el('dt', { text: 'IP anonimizada' }), el('dd', { text: s.anonymize_ip ? 'si (/24)' : 'no, se guarda completa' }),
+          el('dt', { text: 'IP anonimizada' }), el('dd', { text: s.anonymize_ip ? 'si, se recorta el ultimo tramo de la IP antes de guardarla' : 'no, se guarda completa' }),
           el('dt', { text: 'Origen publico' }), el('dd', { class: 'mono', text: s.public_origin }),
         )
       ),
@@ -36,7 +36,7 @@ export async function settingsPage(view) {
           el('dt', { text: 'Eventos' }),       el('dd', { text: num(s.events_rows) }),
           el('dt', { text: 'Creadores' }),     el('dd', { text: num(s.creators_rows) }),
           el('dt', { text: 'Evento mas viejo' }), el('dd', { text: s.oldest_event ? date(s.oldest_event) : '—' }),
-          el('dt', { text: 'Rollup hasta' }),  el('dd', { text: s.rollup_last_day ? String(s.rollup_last_day).slice(0, 10) : 'nunca' }),
+          el('dt', { text: 'Rollup hasta', title: 'Ultima vez que se recalcularon los totales diarios' }),  el('dd', { text: s.rollup_last_day ? String(s.rollup_last_day).slice(0, 10) : 'nunca' }),
         )
       )
     ),
@@ -44,7 +44,7 @@ export async function settingsPage(view) {
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
       el('div', { class: 'section-title', text: 'Widget de creadores para tu web' }),
       el('p', { class: 'dim', style: 'font-size:var(--fs-sm);margin-bottom:var(--s-3)' },
-        'Pega esto donde quieras la rejilla de creadores. Solo muestra los que has marcado como publicos.'),
+        'Pega esto donde quieras la rejilla de creadores. Un visitante de tu web vera una grilla de tarjetas, una por cada creador marcado como publico, con su avatar, su nombre y un link a su canal. La grilla se actualiza sola: no hace falta tocar nada cuando sumes o saques creadores.'),
       el('code', { class: 'snippet', text: snippet }),
       el('div', { class: 'filters', style: 'margin-top:var(--s-3)' },
         el('button', { class: 'btn btn-sm', onclick: async () => {

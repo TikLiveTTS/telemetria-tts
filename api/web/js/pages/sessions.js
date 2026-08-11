@@ -1,5 +1,5 @@
 import { api, qs } from '../api.js';
-import { el, clear, num, minutes, date, relative, platformPill, skeleton } from '../format.js';
+import { el, clear, num, minutes, date, relative, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
 const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '' };
@@ -60,8 +60,12 @@ export async function sessionsPage(view) {
   await load();
 }
 
-async function load() {
-  clear(tbody).append(el('tr', {}, el('td', { colspan: 7 }, skeleton(3))));
+export async function sessionsRefresh() {
+  await load({ silent: true });
+}
+
+async function load({ silent = false } = {}) {
+  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 7 }, skeleton(3))));
 
   const data = await api.get('/api/dashboard/sessions' + qs({
     page: ui.page, pageSize: ui.pageSize,
@@ -88,9 +92,15 @@ async function load() {
   for (const s of data.rows) {
     const isLive = s.last_heartbeat_at && new Date(s.last_heartbeat_at).getTime() > liveThreshold;
 
+    const isMachineIdentity = !s.user_id;
+
     tbody.append(el('tr', { class: 'clickable', onclick: () => showTimeline(s) },
       el('td', {},
-        el('div', { class: 'mono', text: s.user_id || (s.machine_id || '').slice(0, 10) + '…' }),
+        el('div', {
+          class: 'mono',
+          text: s.user_id || (s.machine_id || '').slice(0, 10) + '…',
+          title: isMachineIdentity ? 'ID de equipo/instalacion, no identifica a una persona' : null,
+        }),
         s.first_seen ? el('span', { class: 'badge badge-new', text: 'PRIMERA' }) : null
       ),
       el('td', {}, s.country || el('span', { class: 'dim', text: '—' }),
@@ -103,7 +113,7 @@ async function load() {
       el('td', { class: 'dim nowrap', text: date(s.started_at) }),
       el('td', {}, isLive
         ? el('span', { class: 'badge badge-live', text: 'EN VIVO' })
-        : el('span', { class: 'dim', style: 'font-size:var(--fs-xs)', text: s.ended_at ? 'cerrada' : 'sin cierre' }))
+        : el('span', { class: 'badge badge-mut', text: s.ended_at ? 'cerrada' : 'sin cierre' }))
     ));
   }
 }
@@ -122,7 +132,8 @@ async function showTimeline(s) {
     ),
 
     el('dl', { class: 'kv' },
-      el('dt', { text: 'Maquina' }),   el('dd', { class: 'mono', text: s.machine_id || '—' }),
+      el('dt', { text: 'ID de equipo', title: 'Identifica el equipo/instalacion de la app, no a una persona' }),
+      el('dd', { class: 'mono', text: s.machine_id || '—' }),
       el('dt', { text: 'Version' }),   el('dd', { text: s.app_version ? `v${s.app_version}` : '—' }),
       el('dt', { text: 'Ubicacion' }), el('dd', { text: [s.city, s.country].filter(Boolean).join(', ') || '—' }),
       el('dt', { text: 'Inicio' }),    el('dd', { text: date(s.started_at) }),
@@ -137,7 +148,11 @@ async function showTimeline(s) {
           el('table', {},
             el('tbody', {}, ...events.map((e) => el('tr', {},
               el('td', { class: 'nowrap dim mono', text: new Date(e.ts).toLocaleTimeString('es') }),
-              el('td', { class: 'nowrap', text: `${e.connector}.${e.name}` }),
+              el('td', {
+                class: 'nowrap',
+                text: `${CONNECTOR_LABELS[e.connector] || e.connector} · ${prettyEvent(e.name)}`,
+                title: `${e.connector}.${e.name}`,
+              }),
               el('td', { class: 'mono', text: propsSummary(e.props) })
             )))
           )
@@ -151,6 +166,10 @@ function propsSummary(props) {
   const parts = Object.entries(props)
     .filter(([, v]) => v !== null && v !== undefined && v !== '')
     .slice(0, 4)
-    .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`);
+    .map(([k, v]) => {
+      const key = k.replace(/_/g, ' ');
+      const value = typeof v === 'object' ? JSON.stringify(v) : (typeof v === 'number' ? num(v) : v);
+      return `${key}=${value}`;
+    });
   return parts.join(' ').slice(0, 120);
 }

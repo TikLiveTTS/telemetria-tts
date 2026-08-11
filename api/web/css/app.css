@@ -234,6 +234,19 @@ tbody tr.clickable { cursor: pointer; }
 .kv dt { color: var(--muted); }
 .kv dd { color: var(--text); word-break: break-word; }
 
+/* Modal centrado (confirmaciones, formularios cortos) */
+.modal {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - var(--s-6) * 2));
+  z-index: 60; padding: var(--s-6); border-radius: var(--r-md, var(--r-sm));
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.modal[hidden] { display: none; }
+.modal-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.6); }
+.modal-scrim[hidden] { display: none; }
+.modal h3 { font-size: var(--fs-lg); margin-bottom: var(--s-4); }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-5); }
+
 /* Skeleton de carga */
 .skel { border-radius: var(--r-sm); height: 1.6rem;
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);

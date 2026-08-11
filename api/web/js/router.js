@@ -2,13 +2,14 @@
 
 import { destroyCharts } from './charts.js';
 import { destroyMap } from './pages/geo.js';
-import { clear, el } from './format.js';
+import { clear, el, toast } from './format.js';
 
 const routes = new Map();
 let current = null;
 
-export function register(path, render) {
-  routes.set(path, render);
+// refreshData es opcional: paginas sin migrar caen a un rebuild completo.
+export function register(path, render, refreshData) {
+  routes.set(path, { render, refreshData });
 }
 
 export function currentRoute() {
@@ -23,16 +24,16 @@ function pathFromHash() {
 // Resuelve la ruta. Soporta un parametro final: '/features/:name' captura
 // '#/features/tts'.
 function resolve(path) {
-  if (routes.has(path)) return { render: routes.get(path), param: null };
+  if (routes.has(path)) return { ...routes.get(path), param: null };
 
-  for (const [pattern, render] of routes) {
+  for (const [pattern, entry] of routes) {
     if (!pattern.endsWith('/:param')) continue;
     const prefix = pattern.slice(0, -'/:param'.length);
     if (path.startsWith(prefix + '/')) {
-      return { render, param: decodeURIComponent(path.slice(prefix.length + 1)) };
+      return { ...entry, param: decodeURIComponent(path.slice(prefix.length + 1)) };
     }
   }
-  return { render: routes.get('/overview'), param: null };
+  return { ...routes.get('/overview'), param: null };
 }
 
 export async function renderCurrent() {
@@ -62,6 +63,23 @@ export async function renderCurrent() {
         el('div', { text: err.message })
       )
     );
+  }
+}
+
+// Refresco periodico/manual: actualiza los datos de la pagina actual sin
+// destruir el DOM (sin perder foco de busqueda, scroll de tabla, ni
+// reiniciar charts/mapa). Si la pagina no tiene refreshData todavia, cae a
+// un rebuild completo (mismo comportamiento que antes, sin regresion).
+export async function refreshCurrent() {
+  if (current === null) return renderCurrent();
+  const { refreshData, param } = resolve(current);
+  if (!refreshData) return renderCurrent();
+
+  try {
+    await refreshData(document.getElementById('view'), param);
+  } catch (err) {
+    if (err.message === 'unauthorized') return;
+    toast(err.message, true);
   }
 }
 
