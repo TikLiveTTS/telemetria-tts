@@ -93,15 +93,23 @@ function renderMap(container, points) {
       });
     });
 
-    map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; });
-
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+    const showPopup = (lngLat, html) => {
+      popup.setLngLat(lngLat).setHTML(`<div style="font-size:12px;color:#111;line-height:1.4">${html}</div>`).addTo(map);
+    };
+
+    map.on('mouseenter', 'clusters', (e) => {
+      map.getCanvas().style.cursor = 'pointer';
+      const p = e.features[0].properties;
+      showPopup(e.features[0].geometry.coordinates, `<b>${p.point_count}</b> usuarios en esta zona`);
+    });
+    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+
     map.on('mouseenter', 'point', (e) => {
       map.getCanvas().style.cursor = 'pointer';
       const p = e.features[0].properties;
       const label = [p.city, p.country].filter(Boolean).join(', ') || 'Ubicacion desconocida';
-      popup.setLngLat(e.features[0].geometry.coordinates).setHTML(`<span style="font-size:12px">${label}</span>`).addTo(map);
+      showPopup(e.features[0].geometry.coordinates, `<b>${label}</b><br>1 usuario`);
     });
     map.on('mouseleave', 'point', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
   });
