@@ -4,6 +4,7 @@ const express = require('express');
 const q = require('../queries/dashboard');
 const config = require('../config');
 const { runRollup, purgeOldEvents } = require('../jobs');
+const { pool } = require('../db');
 
 const router = express.Router();
 
@@ -62,5 +63,15 @@ router.get('/status', wrap(async () => ({
 // Acciones de mantenimiento desde la pagina Ajustes.
 router.post('/maintenance/rollup', wrap(async () => ({ ok: true, rows: await runRollup(90) })));
 router.post('/maintenance/purge',  wrap(async () => ({ ok: true, deleted: await purgeOldEvents() })));
+
+// TEMPORAL: vacia toda la telemetria para probar un arranque limpio.
+// Quitar despues de la prueba (ver conversacion 2026-08-11).
+router.post('/maintenance/reset-all', wrap(async () => {
+  await pool.query(`TRUNCATE TABLE
+    events, sessions, installs, app_errors,
+    feature_daily, creator_follower_history, creators
+    RESTART IDENTITY CASCADE`);
+  return { ok: true };
+}));
 
 module.exports = router;
