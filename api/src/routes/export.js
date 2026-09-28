@@ -10,10 +10,17 @@ const router = express.Router();
 // historial del navegador.
 
 const DATASETS = {
-  sessions: `SELECT s.*, i.user_id
+  sessions: `SELECT s.session_id, s.machine_id, s.app_version, s.os_release,
+                    s.country, s.country_code, s.city, s.lat, s.lon,
+                    s.platforms_used, s.started_at, s.last_heartbeat_at,
+                    s.ended_at, s.session_duration_minutes, s.first_seen,
+                    s.received_at, i.user_id
                FROM sessions s LEFT JOIN installs i ON i.machine_id = s.machine_id
               ORDER BY s.started_at DESC`,
-  installs: 'SELECT * FROM installs ORDER BY first_seen_at DESC',
+  installs: `SELECT machine_id, user_id, first_seen_at, last_seen_at, app_version,
+                    os_platform, os_release, os_arch, locale, country, country_code,
+                    city, lat, lon, total_sessions, total_minutes
+               FROM installs ORDER BY first_seen_at DESC`,
   creators: `SELECT id, platform, username, user_id, display_name, channel_url,
                     follower_count, peak_followers, country, resolve_count,
                     first_seen_at, last_seen_at, total_sessions, total_minutes,
