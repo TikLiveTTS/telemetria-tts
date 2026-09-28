@@ -9,7 +9,7 @@ const REAL_INSTALL = "machine_id NOT LIKE 'manual:%'";
 // Unica definicion de "app abierta" que comparten /summary, /geo/live y
 // /sessions. Es presencia del proceso, no una transmision en vivo: el emisor
 // aun no manda una senal LIVE verificada.
-const APP_OPEN = `(ended_at IS NULL AND last_heartbeat_at > NOW() - INTERVAL '5 minutes')`;
+const APP_OPEN = `(ended_at IS NULL AND received_at > NOW() - INTERVAL '5 minutes')`;
 
 // KPIs de cabecera. `prev_*` permite mostrar el delta contra el periodo
 // anterior de la misma longitud.

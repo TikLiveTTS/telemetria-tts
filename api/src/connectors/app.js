@@ -10,7 +10,7 @@ async function handle(ctx, event) {
 
   if (event.name === 'startup') {
     await client.query(
-      'UPDATE sessions SET started_at = $2 WHERE session_id = $1',
+      'UPDATE sessions SET started_at = $2, received_at = NOW() WHERE session_id = $1',
       [session_id, event.ts]
     );
     return;
@@ -19,7 +19,8 @@ async function handle(ctx, event) {
   if (event.name === 'heartbeat') {
     await client.query(
       `UPDATE sessions
-          SET last_heartbeat_at = GREATEST(last_heartbeat_at, $2)
+          SET last_heartbeat_at = GREATEST(last_heartbeat_at, $2),
+              received_at = NOW()
         WHERE session_id = $1 AND ended_at IS NULL`,
       [session_id, event.ts]
     );
