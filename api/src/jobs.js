@@ -29,6 +29,16 @@ async function purgeOldEvents() {
   return rowCount;
 }
 
+async function sweepAbandonedSessions() {
+  const { rowCount } = await query(
+    `UPDATE sessions
+        SET ended_at = last_heartbeat_at
+      WHERE ended_at IS NULL
+        AND last_heartbeat_at < NOW() - INTERVAL '20 minutes'`
+  );
+  return rowCount;
+}
+
 function start() {
   const tick = async () => {
     try {
@@ -43,15 +53,22 @@ function start() {
     } catch (err) {
       console.error('[jobs] purga fallo:', err.message);
     }
+    try {
+      const closed = await sweepAbandonedSessions();
+      if (closed > 0) console.log(`[jobs] sesiones cerradas: ${closed}`);
+    } catch (err) {
+      console.error('[jobs] cierre de sesiones fallo:', err.message);
+    }
   };
 
   // Un primer pase al arrancar (con ventana amplia, por si el servicio estuvo
   // caido) y luego cada hora.
   runRollup(90).catch((err) => console.error('[jobs] rollup inicial fallo:', err.message));
+  sweepAbandonedSessions().catch((err) => console.error('[jobs] cierre inicial de sesiones fallo:', err.message));
 
   const timer = setInterval(tick, 60 * 60 * 1000);
   if (timer.unref) timer.unref();
   return timer;
 }
 
-module.exports = { start, runRollup, purgeOldEvents };
+module.exports = { start, runRollup, purgeOldEvents, sweepAbandonedSessions };
