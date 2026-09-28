@@ -96,6 +96,9 @@ async function handle(ctx, event) {
   if (event.name === 'seen') {
     // Conexion sin resolucion. Si el canal no existia todavia (por ejemplo la
     // primera resolucion fallo), se crea la ficha minima para no perderlo.
+    // Nunca toca avatar_url/display_name: `seen` no trae perfil.
+    // Baja force_resolve: la app ya conecto el canal tras recibir la directiva
+    // y no lo resolvio; seguir pidiendolo en cada batch no tendria efecto.
     await client.query(
       `INSERT INTO creators
          (platform, username, user_id, machine_id, channel_url,
@@ -105,6 +108,7 @@ async function handle(ctx, event) {
          user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
          machine_id   = COALESCE(creators.machine_id, EXCLUDED.machine_id),
          app_version  = COALESCE(EXCLUDED.app_version, creators.app_version),
+         force_resolve = FALSE,
          last_seen_at = EXCLUDED.last_seen_at`,
       [
         platform, username, ctx.install.user_id, machine_id,
