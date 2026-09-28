@@ -7,7 +7,7 @@
 //   stats      → conteo de seguidores del heartbeat (dato que la app ya tenia
 //                en memoria para el overlay, no cuesta una peticion extra)
 
-const PLATFORMS = new Set(['tiktok', 'twitch', 'youtube']);
+const PLATFORMS = new Set(['tiktok', 'twitch', 'youtube', 'kick']);
 
 function cleanHandle(v) {
   if (!v) return null;
@@ -28,6 +28,7 @@ function safeUrl(v) {
 function channelUrl(platform, username) {
   if (platform === 'tiktok') return `https://www.tiktok.com/@${username}`;
   if (platform === 'twitch') return `https://www.twitch.tv/${username}`;
+  if (platform === 'kick') return `https://kick.com/${username}`;
   if (platform === 'youtube') {
     return /^UC[\w-]{20,}$/.test(username)
       ? `https://www.youtube.com/channel/${username}`

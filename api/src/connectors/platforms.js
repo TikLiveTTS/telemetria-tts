@@ -1,10 +1,10 @@
 'use strict';
 
-// Conexiones a TikTok / Twitch / YouTube.
+// Conexiones a TikTok / Twitch / YouTube / Kick.
 // Mantiene `sessions.platforms_used` al dia sin esperar al shutdown, que es
 // justo lo que hoy nunca se llega a enviar.
 
-const VALID = new Set(['tiktok', 'twitch', 'youtube']);
+const VALID = new Set(['tiktok', 'twitch', 'youtube', 'kick']);
 
 async function handle(ctx, event) {
   if (event.name !== 'connected') return;
