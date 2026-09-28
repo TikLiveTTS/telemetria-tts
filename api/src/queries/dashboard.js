@@ -116,13 +116,13 @@ async function retention() {
 async function countries(limit = 10) {
   const { rows } = await query(
     `SELECT country, country_code,
-            COUNT(*)::int AS users,
+            COUNT(*)::int AS installs,
             SUM(total_sessions)::int AS sessions,
             SUM(total_minutes)::int AS minutes
        FROM installs
       WHERE country IS NOT NULL
       GROUP BY 1, 2
-      ORDER BY users DESC
+      ORDER BY installs DESC
       LIMIT $1`,
     [limit]
   );
