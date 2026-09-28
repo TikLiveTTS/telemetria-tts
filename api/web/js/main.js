@@ -1,5 +1,5 @@
 import { api, state, setUnauthorizedHandler } from './api.js';
-import { register, startRouter, renderCurrent, refreshCurrent } from './router.js';
+import { register, startRouter, renderCurrent, refreshCurrent, pathFromHash } from './router.js';
 import { initDrawer, closeDrawer } from './drawer.js';
 import { initModal } from './modal.js';
 import { toast } from './format.js';
@@ -12,6 +12,10 @@ import { versionsPage, versionsRefresh } from './pages/versions.js';
 import { sessionsPage, sessionsRefresh } from './pages/sessions.js';
 import { errorsPage, errorsRefresh } from './pages/errors.js';
 import { settingsPage } from './pages/settings.js';
+
+const PERIOD_OPTIONS = [1, 7, 30, 90, 3650];
+// Solo estas vistas mandan ?days= a la API; el resto ignora el periodo.
+const PERIOD_ROUTES = ['/overview', '/features', '/errors'];
 
 const loginEl = () => document.getElementById('login');
 const appEl = () => document.getElementById('app');
@@ -54,9 +58,49 @@ async function fullRefresh() {
   stampRefresh();
 }
 
+let refreshing = false;
+
 async function dataRefresh() {
-  await refreshCurrent();
-  stampRefresh();
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    await refreshCurrent();
+    stampRefresh();
+  } catch (_) {
+    // El router ya avisó con un toast; "Actualizado" conserva la hora del último éxito.
+  } finally {
+    refreshing = false;
+  }
+}
+
+function periodButtons() {
+  return document.querySelectorAll('#period button[data-days]');
+}
+
+function selectPeriod(days) {
+  state.days = days;
+  for (const b of periodButtons()) b.classList.toggle('active', Number(b.dataset.days) === days);
+}
+
+function restorePeriodFromUrl() {
+  const days = Number(new URLSearchParams(location.search).get('days'));
+  if (PERIOD_OPTIONS.includes(days)) selectPeriod(days);
+}
+
+function savePeriodToUrl() {
+  const url = new URL(location.href);
+  url.searchParams.set('days', state.days);
+  history.replaceState(null, '', url);
+}
+
+function routeUsesPeriod(path) {
+  return PERIOD_ROUTES.some((route) => path === route || path.startsWith(route + '/'));
+}
+
+function syncPeriodAvailability() {
+  const applies = routeUsesPeriod(pathFromHash());
+  for (const b of periodButtons()) b.disabled = !applies;
+  document.getElementById('period-note').hidden = applies;
 }
 
 function wireChrome() {
@@ -70,8 +114,8 @@ function wireChrome() {
   document.getElementById('period').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-days]');
     if (!btn) return;
-    state.days = Number(btn.dataset.days);
-    for (const b of e.currentTarget.children) b.classList.toggle('active', b === btn);
+    selectPeriod(Number(btn.dataset.days));
+    savePeriodToUrl();
     dataRefresh();
   });
 
@@ -107,6 +151,9 @@ async function boot() {
   initDrawer();
   initModal();
   wireChrome();
+  restorePeriodFromUrl();
+  syncPeriodAvailability();
+  window.addEventListener('hashchange', syncPeriodAvailability);
 
   try {
     await api.get('/api/auth/me');

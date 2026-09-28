@@ -93,6 +93,8 @@ main { padding: var(--s-6); max-width: 1500px; }
   color: var(--muted); font-size: var(--fs-sm); cursor: pointer;
 }
 .seg button.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+.seg button:disabled { opacity: .45; cursor: default; }
+#period-note { color: var(--muted); font-size: var(--fs-xs); }
 
 .field {
   padding: 7px 11px; background: var(--surface-2);

@@ -119,33 +119,25 @@ function renderMap(container, points) {
 }
 
 let statValueEl = null;
-let statTrendEl = null;
+let statWithoutGeoEl = null;
 
-function trendText(trendPct) {
-  if (trendPct == null) return '';
-  return `${trendPct >= 0 ? '↗' : '↘'} ${Math.abs(trendPct)}% vs 5 min atras`;
-}
-
-function statCard(count, trendPct) {
-  statValueEl = el('div', { class: 'map-stat-value', text: num(count) });
-  statTrendEl = el('div', {
-    class: 'map-trend',
-    style: `color:${trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)'}`,
-    text: trendText(trendPct),
-  });
+function statCard(live) {
+  statValueEl = el('div', { class: 'map-stat-value' });
+  statWithoutGeoEl = el('div', { class: 'map-stat-label' });
+  updateStatCard(live);
 
   return el('div', { class: 'map-stat-card' },
-    el('div', { class: 'map-stat-label', text: 'Usuarios activos' }),
+    el('div', { class: 'map-stat-label', text: 'Apps abiertas' }),
     statValueEl,
-    statTrendEl
+    statWithoutGeoEl
   );
 }
 
-function updateStatCard(count, trendPct) {
+function updateStatCard(live) {
   if (!statValueEl) return;
-  statValueEl.textContent = num(count);
-  statTrendEl.style.color = trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)';
-  statTrendEl.textContent = trendText(trendPct);
+  statValueEl.textContent = num(live.count);
+  statWithoutGeoEl.textContent = `+${num(live.without_geo)} sin ubicacion`;
+  statWithoutGeoEl.hidden = !live.without_geo;
 }
 
 let countriesChart = null;
@@ -155,7 +147,7 @@ let renderId = 0;
 function countryRow(c) {
   return el('tr', {},
     el('td', { text: countryName(c.country_code, c.country) }),
-    el('td', { class: 'right', text: num(c.users) }),
+    el('td', { class: 'right', text: num(c.installs) }),
     el('td', { class: 'right', text: num(c.sessions) }),
     el('td', { class: 'right nowrap', title: 'Tiempo total acumulado (formato h m)', text: minutes(c.minutes) })
   );
@@ -181,31 +173,32 @@ export async function geoPage(view) {
   view.replaceChildren(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Geografia' }),
-        el('div', { class: 'sub', text: 'Puntos en vivo: instalaciones con actividad en los ultimos 5 minutos' }))
+        el('div', { class: 'sub', text: 'Puntos: sesiones con la app abierta (latido en los ultimos 5 minutos). No indica transmision en vivo' }))
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
-      el('div', { class: 'section-title', text: 'Usuarios activos ahora' }),
+      el('div', { class: 'section-title', text: 'Apps abiertas ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
-        statCard(live.count, live.trendPct)
+        statCard(live)
       )
     ),
 
     el('div', { class: 'grid-2' },
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Top paises' }),
+        el('div', { class: 'section-title', text: 'Instalaciones historicas por pais' }),
+        el('div', { class: 'sub', text: 'Acumuladas; no respetan el periodo seleccionado' }),
         el('div', { class: 'chart-box' }, el('canvas', { id: 'c-countries' }))
       ),
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Detalle por pais' }),
+        el('div', { class: 'section-title', text: 'Detalle historico por pais' }),
         el('div', { class: 'table-wrap', style: 'max-height:250px;overflow-y:auto' },
           el('table', {},
             el('thead', {}, el('tr', {},
               el('th', { text: 'Pais' }),
-              el('th', { class: 'right', text: 'Usuarios' }),
-              el('th', { class: 'right', text: 'Sesiones' }),
-              el('th', { class: 'right', text: 'Tiempo' })
+              el('th', { class: 'right', text: 'Instalaciones' }),
+              el('th', { class: 'right', text: 'Sesiones historicas' }),
+              el('th', { class: 'right', text: 'Tiempo historico' })
             )),
             countriesTbody
           )
@@ -220,8 +213,8 @@ export async function geoPage(view) {
     ? barChart(
         document.getElementById('c-countries'),
         countries.slice(0, 10).map((c) => countryName(c.country_code, c.country)),
-        countries.slice(0, 10).map((c) => c.users),
-        { horizontal: true, label: 'Usuarios' }
+        countries.slice(0, 10).map((c) => c.installs),
+        { horizontal: true, label: 'Instalaciones historicas' }
       )
     : null;
 }
@@ -237,13 +230,13 @@ export async function geoRefresh() {
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
 
   updateMapPoints(live.points);
-  updateStatCard(live.count, live.trendPct);
+  updateStatCard(live);
 
   if (countries.length) {
     const labels = countries.slice(0, 10).map((c) => countryName(c.country_code, c.country));
-    const data = countries.slice(0, 10).map((c) => c.users);
+    const data = countries.slice(0, 10).map((c) => c.installs);
     if (countriesChart) updateChart(countriesChart, labels, [data]);
-    else countriesChart = barChart(document.getElementById('c-countries'), labels, data, { horizontal: true, label: 'Usuarios' });
+    else countriesChart = barChart(document.getElementById('c-countries'), labels, data, { horizontal: true, label: 'Instalaciones historicas' });
   }
 
   if (countriesTbody) {

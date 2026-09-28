@@ -1,5 +1,5 @@
 import { api, qs } from '../api.js';
-import { el, clear, num, minutes, date, relative, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
+import { el, clear, num, minutes, date, relative, avatar, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
 const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '' };
@@ -43,6 +43,7 @@ export async function sessionsPage(view) {
         el('table', {},
           el('thead', {}, el('tr', {},
             el('th', { text: 'Usuario' }),
+            el('th', { text: 'Creador' }),
             el('th', { text: 'Pais' }),
             el('th', { text: 'Version' }),
             el('th', { text: 'Plataformas' }),
@@ -65,7 +66,7 @@ export async function sessionsRefresh() {
 }
 
 async function load({ silent = false } = {}) {
-  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 7 }, skeleton(3))));
+  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 8 }, skeleton(3))));
 
   const data = await api.get('/api/dashboard/sessions' + qs({
     page: ui.page, pageSize: ui.pageSize,
@@ -82,16 +83,12 @@ async function load({ silent = false } = {}) {
   clear(tbody);
 
   if (!data.rows.length) {
-    tbody.append(el('tr', {}, el('td', { colspan: 7 },
+    tbody.append(el('tr', {}, el('td', { colspan: 8 },
       el('div', { class: 'empty', text: 'Sin sesiones' }))));
     return;
   }
 
-  const liveThreshold = Date.now() - 5 * 60 * 1000;
-
   for (const s of data.rows) {
-    const isLive = s.last_heartbeat_at && new Date(s.last_heartbeat_at).getTime() > liveThreshold;
-
     const isMachineIdentity = !s.user_id;
 
     tbody.append(el('tr', { class: 'clickable', onclick: () => showTimeline(s) },
@@ -103,6 +100,7 @@ async function load({ silent = false } = {}) {
         }),
         s.first_seen ? el('span', { class: 'badge badge-new', text: 'PRIMERA' }) : null
       ),
+      creatorCell(s),
       el('td', {}, s.country || el('span', { class: 'dim', text: '—' }),
         s.city ? el('div', { class: 'dim', style: 'font-size:var(--fs-xs)', text: s.city }) : null),
       el('td', { text: s.app_version ? `v${s.app_version}` : '—' }),
@@ -111,16 +109,48 @@ async function load({ silent = false } = {}) {
         : el('span', { class: 'dim', text: '—' })),
       el('td', { class: 'right nowrap', text: minutes(s.session_duration_minutes) }),
       el('td', { class: 'dim nowrap', text: date(s.started_at) }),
-      el('td', {}, isLive
-        ? el('span', { class: 'badge badge-live', text: 'EN VIVO' })
-        : el('span', { class: 'badge badge-mut', text: s.ended_at ? 'cerrada' : 'sin cierre' }))
+      el('td', {}, sessionBadge(s))
     ));
   }
 }
 
+function creatorCell(s) {
+  if (!s.creator_username) {
+    return el('td', {}, el('span', { class: 'dim', text: 'sin canal identificado' }));
+  }
+
+  const username = `@${s.creator_username}`;
+  const identity = s.creator_channel_url
+    ? el('a', {
+        href: s.creator_channel_url, target: '_blank', rel: 'noopener noreferrer',
+        style: 'text-decoration:none;font-weight:600', onclick: (event) => event.stopPropagation(),
+      }, username)
+    : el('span', { text: username });
+
+  return el('td', {}, el('div', { style: 'display:flex;gap:8px;align-items:center' },
+    avatar(s.creator_avatar_url, s.creator_username), identity
+  ));
+}
+
+// El estado lo decide el servidor (app_open ya excluye sesiones cerradas).
+// "App abierta" no afirma una transmision: aun no hay senal LIVE verificada.
+function sessionBadge(s) {
+  if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
+  if (s.app_open || s.connected) {
+    return el('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' },
+      s.app_open ? el('span', { class: 'badge badge-live', text: 'App abierta' }) : null,
+      s.connected ? el('span', { class: 'badge badge-live', text: 'Conectado a plataforma' }) : null
+    );
+  }
+  return el('span', { class: 'badge badge-mut', text: 'sin cierre' });
+}
+
 async function showTimeline(s) {
   openDrawer(skeleton(6));
-  const events = await api.get(`/api/dashboard/sessions/${s.session_id}/events`);
+  const [events, status] = await Promise.all([
+    api.get(`/api/dashboard/sessions/${s.session_id}/events`),
+    api.get('/api/dashboard/status'),
+  ]);
 
   openDrawer(
     el('div', { class: 'drawer-head' },
@@ -140,6 +170,7 @@ async function showTimeline(s) {
       el('dt', { text: 'Fin' }),       el('dd', { text: s.ended_at ? date(s.ended_at) : 'sin cierre registrado' }),
       el('dt', { text: 'Duracion' }),  el('dd', { text: minutes(s.session_duration_minutes) }),
       el('dt', { text: 'Ultimo latido' }), el('dd', { text: relative(s.last_heartbeat_at) }),
+      el('dt', { text: 'Errores' }),   el('dd', {}, glitchtipLink(status.glitchtip_issues_url, s.session_id)),
     ),
 
     el('div', { class: 'section-title', text: `Eventos (${events.length})` }),
@@ -159,6 +190,12 @@ async function showTimeline(s) {
         )
       : el('div', { class: 'empty', text: 'Sin eventos registrados' })
   );
+}
+
+function glitchtipLink(issuesUrl, sessionId) {
+  const query = encodeURIComponent(`telemetry_session_id:${sessionId}`);
+  return el('a', { href: `${issuesUrl}/?query=${query}`, target: '_blank', rel: 'noopener noreferrer' },
+    'Ver errores en GlitchTip');
 }
 
 function propsSummary(props) {

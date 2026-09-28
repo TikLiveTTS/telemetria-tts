@@ -7,7 +7,7 @@
 //   stats      → conteo de seguidores del heartbeat (dato que la app ya tenia
 //                en memoria para el overlay, no cuesta una peticion extra)
 
-const PLATFORMS = new Set(['tiktok', 'twitch', 'youtube']);
+const PLATFORMS = new Set(['tiktok', 'twitch', 'youtube', 'kick']);
 
 function cleanHandle(v) {
   if (!v) return null;
@@ -28,6 +28,7 @@ function safeUrl(v) {
 function channelUrl(platform, username) {
   if (platform === 'tiktok') return `https://www.tiktok.com/@${username}`;
   if (platform === 'twitch') return `https://www.twitch.tv/${username}`;
+  if (platform === 'kick') return `https://kick.com/${username}`;
   if (platform === 'youtube') {
     return /^UC[\w-]{20,}$/.test(username)
       ? `https://www.youtube.com/channel/${username}`
@@ -96,6 +97,9 @@ async function handle(ctx, event) {
   if (event.name === 'seen') {
     // Conexion sin resolucion. Si el canal no existia todavia (por ejemplo la
     // primera resolucion fallo), se crea la ficha minima para no perderlo.
+    // Nunca toca avatar_url/display_name: `seen` no trae perfil.
+    // Baja force_resolve: la app ya conecto el canal tras recibir la directiva
+    // y no lo resolvio; seguir pidiendolo en cada batch no tendria efecto.
     await client.query(
       `INSERT INTO creators
          (platform, username, user_id, machine_id, channel_url,
@@ -105,6 +109,7 @@ async function handle(ctx, event) {
          user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
          machine_id   = COALESCE(creators.machine_id, EXCLUDED.machine_id),
          app_version  = COALESCE(EXCLUDED.app_version, creators.app_version),
+         force_resolve = FALSE,
          last_seen_at = EXCLUDED.last_seen_at`,
       [
         platform, username, ctx.install.user_id, machine_id,

@@ -41,11 +41,12 @@ function delta(now, prev) {
   return el('span', { class: `delta ${up ? 'up' : 'down'}`, text: `${up ? '▲' : '▼'} ${Math.abs(pct)}% vs periodo anterior` });
 }
 
-// Arma el DOM una sola vez: 7 tarjetas KPI (vacias) + los 3 contenedores de
+// Arma el DOM una sola vez: 8 tarjetas KPI (vacias) + los 3 contenedores de
 // chart. Los valores/graficos se llenan despues via applyData().
 function buildLayout(view) {
   refs.installs = kpi('Instalaciones', 'accent');
-  refs.activeNow = kpi('Activos ahora', 'cyan');
+  refs.activeNow = kpi('Apps abiertas', 'cyan');
+  refs.connectedNow = kpi('Conectado a plataforma', 'cyan');
   refs.activeToday = kpi('Activos hoy', '');
   refs.activePeriod = kpi('Activos periodo', '');
   refs.newPeriod = kpi('Nuevos periodo', 'green');
@@ -61,7 +62,7 @@ function buildLayout(view) {
 
   view.replaceChildren(
     el('div', { class: 'kpis' },
-      refs.installs.node, refs.activeNow.node, refs.activeToday.node, refs.activePeriod.node,
+      refs.installs.node, refs.activeNow.node, refs.connectedNow.node, refs.activeToday.node, refs.activePeriod.node,
       refs.newPeriod.node, refs.avgSession.node, refs.creators.node
     ),
 
@@ -91,8 +92,11 @@ function applyData(s, daily, retention, platforms) {
 
   refs.activeNow.valueEl.textContent = num(s.active_now);
   clear(refs.activeNow.subEl).append(el('span', {
-    class: 'dim', text: 'conectados en los ultimos 5 minutos', title: 'Heartbeat recibido hace menos de 5 minutos',
+    class: 'dim', text: 'con latido en los ultimos 5 minutos', title: 'App abierta con latido hace menos de 5 minutos. No indica que este transmitiendo en vivo',
   }));
+
+  refs.connectedNow.valueEl.textContent = num(s.connected_now);
+  clear(refs.connectedNow.subEl).append(el('span', { class: 'dim', text: 'con señal recibida en los ultimos 150 segundos' }));
 
   refs.activeToday.valueEl.textContent = num(s.active_today);
   clear(refs.activeToday.subEl).append(el('span', { class: 'dim', text: 'dia local' }));

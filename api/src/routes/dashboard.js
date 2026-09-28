@@ -4,7 +4,7 @@ const express = require('express');
 const q = require('../queries/dashboard');
 const config = require('../config');
 const { runRollup, purgeOldEvents } = require('../jobs');
-const { pool } = require('../db');
+const { ingestStatus } = require('../ingest');
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ function wrap(fn) {
       res.json(await fn(req));
     } catch (err) {
       console.error('[dashboard]', err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Error interno' });
     }
   };
 }
@@ -54,24 +54,16 @@ router.get('/sessions/:id/events', wrap((req) => q.sessionEvents(req.params.id))
 
 router.get('/status', wrap(async () => ({
   ...(await q.systemStatus()),
+  ...ingestStatus(),
   retention_days: config.retentionDays,
   timezone: config.tzDisplay,
   anonymize_ip: config.anonymizeIp,
   public_origin: config.publicOrigin,
+  glitchtip_issues_url: config.glitchtipIssuesUrl,
 })));
 
 // Acciones de mantenimiento desde la pagina Ajustes.
 router.post('/maintenance/rollup', wrap(async () => ({ ok: true, rows: await runRollup(90) })));
 router.post('/maintenance/purge',  wrap(async () => ({ ok: true, deleted: await purgeOldEvents() })));
-
-// TEMPORAL: vacia toda la telemetria para probar un arranque limpio.
-// Quitar despues de la prueba (ver conversacion 2026-08-11).
-router.post('/maintenance/reset-all', wrap(async () => {
-  await pool.query(`TRUNCATE TABLE
-    events, sessions, installs, app_errors,
-    feature_daily, creator_follower_history, creators
-    RESTART IDENTITY CASCADE`);
-  return { ok: true };
-}));
 
 module.exports = router;

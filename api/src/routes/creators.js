@@ -12,7 +12,10 @@ function wrap(fn) {
       if (out !== undefined) res.json(out);
     } catch (err) {
       console.error('[creators]', err.message);
-      res.status(400).json({ error: err.message });
+      const isValidationError = /^(falta |accion invalida|no se puede fusionar|nada que actualizar|sin ids)/.test(err.message);
+      res.status(isValidationError ? 400 : 500).json({
+        error: isValidationError ? 'Solicitud invalida' : 'Error interno',
+      });
     }
   };
 }

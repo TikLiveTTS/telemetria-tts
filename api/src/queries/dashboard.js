@@ -4,25 +4,35 @@ const { query } = require('../db');
 const config = require('../config');
 
 const TZ = config.tzDisplay;
+const REAL_INSTALL = "machine_id NOT LIKE 'manual:%'";
+
+// Unica definicion de "app abierta" que comparten /summary, /geo/live y
+// /sessions. Es presencia del proceso, no una transmision en vivo: el emisor
+// aun no manda una senal LIVE verificada.
+const APP_OPEN = `(ended_at IS NULL AND received_at > NOW() - INTERVAL '5 minutes')`;
+const CONNECTED = `(ended_at IS NULL AND live_heartbeat_at > NOW() - INTERVAL '150 seconds')`;
 
 // KPIs de cabecera. `prev_*` permite mostrar el delta contra el periodo
 // anterior de la misma longitud.
 async function summary(days) {
   const { rows } = await query(
     `SELECT
-       (SELECT COUNT(*) FROM installs)::int AS total_installs,
-       (SELECT COUNT(*) FROM sessions
-         WHERE last_heartbeat_at > NOW() - INTERVAL '5 minutes')::int AS active_now,
+       (SELECT COUNT(*) FROM installs WHERE ${REAL_INSTALL})::int AS total_installs,
+       (SELECT COUNT(*) FROM sessions WHERE ${APP_OPEN})::int AS active_now,
+       (SELECT COUNT(*) FROM sessions WHERE ${CONNECTED})::int AS connected_now,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE (started_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS active_today,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE started_at > NOW() - make_interval(days => $1::int))::int AS active_period,
        (SELECT COUNT(*) FROM installs
-         WHERE (first_seen_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS new_today,
+         WHERE ${REAL_INSTALL}
+           AND (first_seen_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS new_today,
        (SELECT COUNT(*) FROM installs
-         WHERE first_seen_at > NOW() - make_interval(days => $1::int))::int AS new_period,
+         WHERE ${REAL_INSTALL}
+           AND first_seen_at > NOW() - make_interval(days => $1::int))::int AS new_period,
        (SELECT COUNT(*) FROM installs
-         WHERE first_seen_at > NOW() - make_interval(days => $1::int * 2)
+         WHERE ${REAL_INSTALL}
+           AND first_seen_at > NOW() - make_interval(days => $1::int * 2)
            AND first_seen_at <= NOW() - make_interval(days => $1::int))::int AS new_prev_period,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE started_at > NOW() - make_interval(days => $1::int * 2)
@@ -60,10 +70,11 @@ async function daily(days) {
      n AS (
        SELECT (first_seen_at AT TIME ZONE $2)::date AS day, COUNT(*)::int AS installs
          FROM installs
-        WHERE first_seen_at > NOW() - make_interval(days => $1::int)
+        WHERE ${REAL_INSTALL}
+          AND first_seen_at > NOW() - make_interval(days => $1::int)
         GROUP BY 1
      )
-     SELECT d.day,
+     SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
             COALESCE(s.sessions, 0) AS sessions,
             COALESCE(s.users, 0)    AS users,
             COALESCE(n.installs, 0) AS installs
@@ -80,11 +91,13 @@ async function retention() {
     `WITH cohort AS (
        SELECT machine_id, (first_seen_at AT TIME ZONE $1)::date AS c_day
          FROM installs
-        WHERE first_seen_at > NOW() - INTERVAL '90 days'
+        WHERE ${REAL_INSTALL}
+          AND first_seen_at > NOW() - INTERVAL '90 days'
      ),
      act AS (
        SELECT DISTINCT machine_id, (started_at AT TIME ZONE $1)::date AS a_day
          FROM sessions
+        WHERE started_at > NOW() - INTERVAL '90 days'
      ),
      ret AS (
        SELECT c.machine_id,
@@ -112,42 +125,39 @@ async function retention() {
 async function countries(limit = 10) {
   const { rows } = await query(
     `SELECT country, country_code,
-            COUNT(*)::int AS users,
+            COUNT(*)::int AS installs,
             SUM(total_sessions)::int AS sessions,
             SUM(total_minutes)::int AS minutes
        FROM installs
-      WHERE country IS NOT NULL
+      WHERE ${REAL_INSTALL}
+        AND country IS NOT NULL
       GROUP BY 1, 2
-      ORDER BY users DESC
+      ORDER BY installs DESC
       LIMIT $1`,
     [limit]
   );
   return rows;
 }
 
-// Puntos del mapa: solo instalaciones con heartbeat reciente. Tambien
-// compara contra la ventana de 5 minutos anterior, para la tendencia de la
-// tarjeta "Usuarios activos" (variacion real, no inventada).
+// Puntos del mapa: solo sesiones con la app abierta. `count` coincide con los
+// puntos; `without_geo` son las apps abiertas que no se pueden dibujar.
 async function liveMap() {
-  const [{ rows: points }, { rows: counts }] = await Promise.all([
+  const [{ rows: points }, { rows: withoutGeo }] = await Promise.all([
     query(
       `SELECT s.lat, s.lon, s.city, s.country, s.country_code
          FROM sessions s
-        WHERE s.last_heartbeat_at > NOW() - INTERVAL '5 minutes'
+        WHERE ${APP_OPEN}
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
     ),
     query(
-      `SELECT
-         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '5 minutes')::int AS now,
-         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '10 minutes'
-                             AND last_heartbeat_at <= NOW() - INTERVAL '5 minutes')::int AS prev
-         FROM sessions`
+      `SELECT COUNT(*)::int AS count
+         FROM sessions s
+        WHERE ${APP_OPEN}
+          AND (s.lat IS NULL OR s.lon IS NULL)`
     ),
   ]);
 
-  const { now, prev } = counts[0];
-  const trendPct = prev > 0 ? Math.round(((now - prev) / prev) * 100) : null;
-  return { points, count: now, trendPct };
+  return { points, count: points.length, without_geo: withoutGeo[0].count };
 }
 
 async function versions() {
@@ -157,7 +167,8 @@ async function versions() {
             ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS pct,
             MAX(last_seen_at) AS last_seen
        FROM installs
-      WHERE app_version IS NOT NULL
+      WHERE ${REAL_INSTALL}
+        AND app_version IS NOT NULL
       GROUP BY 1
       ORDER BY users DESC`
   );
@@ -218,9 +229,21 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             s.country, s.country_code, s.city, s.platforms_used,
             s.started_at, s.ended_at, s.last_heartbeat_at,
             s.session_duration_minutes, s.first_seen,
+            c.username AS creator_username, c.avatar_url AS creator_avatar_url,
+            c.channel_url AS creator_channel_url,
+            ${APP_OPEN} AS app_open,
+            ${CONNECTED} AS connected,
             COUNT(*) OVER ()::int AS total_rows
        FROM sessions s
        LEFT JOIN installs i ON i.machine_id = s.machine_id
+       -- Una sesion no guarda su canal: se muestra el canal mas reciente del usuario.
+       LEFT JOIN LATERAL (
+         SELECT username, avatar_url, channel_url
+           FROM creators
+          WHERE user_id = i.user_id
+          ORDER BY last_seen_at DESC, id DESC
+          LIMIT 1
+       ) c ON TRUE
        ${clause}
       ORDER BY s.started_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,

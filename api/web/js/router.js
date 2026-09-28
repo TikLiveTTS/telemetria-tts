@@ -16,7 +16,7 @@ export function currentRoute() {
   return current;
 }
 
-function pathFromHash() {
+export function pathFromHash() {
   const raw = (location.hash || '#/overview').slice(1);
   return raw.split('?')[0] || '/overview';
 }
@@ -78,8 +78,8 @@ export async function refreshCurrent() {
   try {
     await refreshData(document.getElementById('view'), param);
   } catch (err) {
-    if (err.message === 'unauthorized') return;
-    toast(err.message, true);
+    if (err.message !== 'unauthorized') toast(err.message, true);
+    throw err;
   }
 }
 

@@ -10,7 +10,7 @@ async function handle(ctx, event) {
 
   if (event.name === 'startup') {
     await client.query(
-      'UPDATE sessions SET started_at = $2 WHERE session_id = $1',
+      'UPDATE sessions SET started_at = $2, received_at = NOW() WHERE session_id = $1',
       [session_id, event.ts]
     );
     return;
@@ -18,8 +18,29 @@ async function handle(ctx, event) {
 
   if (event.name === 'heartbeat') {
     await client.query(
-      'UPDATE sessions SET last_heartbeat_at = $2 WHERE session_id = $1',
+      `UPDATE sessions
+          SET last_heartbeat_at = GREATEST(last_heartbeat_at, $2),
+              received_at = NOW()
+        WHERE session_id = $1 AND ended_at IS NULL`,
       [session_id, event.ts]
+    );
+    return;
+  }
+
+  if (event.name === 'live') {
+    await client.query(
+      `UPDATE sessions
+          SET live_heartbeat_at = NOW()
+        WHERE session_id = $1 AND ended_at IS NULL`,
+      [session_id]
+    );
+    return;
+  }
+
+  if (event.name === 'live_stopped') {
+    await client.query(
+      'UPDATE sessions SET live_heartbeat_at = NULL WHERE session_id = $1',
+      [session_id]
     );
     return;
   }
@@ -32,29 +53,36 @@ async function handle(ctx, event) {
       ? event.props.platforms_used.filter((p) => typeof p === 'string').slice(0, 8)
       : null;
 
-    await client.query(
+    const { rows } = await client.query(
       `UPDATE sessions
           SET ended_at = $2,
               session_duration_minutes = COALESCE($3, session_duration_minutes),
-              platforms_used = COALESCE($4, platforms_used)
-        WHERE session_id = $1`,
+              platforms_used = COALESCE($4, platforms_used),
+              live_heartbeat_at = NULL
+        WHERE session_id = $1 AND $2::timestamptz >= started_at
+        RETURNING platforms_used`,
       [session_id, event.ts, minutes, platforms]
     );
+    if (!rows.length) {
+      console.warn('[app] late_shutdown_discarded', { session_id });
+      return;
+    }
+    const usedPlatforms = rows[0]?.platforms_used || [];
 
     if (minutes != null) {
       await client.query(
         'UPDATE installs SET total_minutes = total_minutes + $2 WHERE machine_id = $1',
         [machine_id, minutes]
       );
-      // Los minutos tambien se acumulan en los canales de este usuario, que es
-      // lo que se muestra en la tabla de creadores.
-      await client.query(
-        `UPDATE creators
-            SET total_minutes = total_minutes + $2,
-                total_sessions = total_sessions + 1
-          WHERE machine_id = $1`,
-        [machine_id, minutes]
-      );
+      if (usedPlatforms.length) {
+        await client.query(
+          `UPDATE creators
+              SET total_minutes = total_minutes + $2,
+                  total_sessions = total_sessions + 1
+            WHERE machine_id = $1 AND platform = ANY($3::text[])`,
+          [machine_id, minutes, usedPlatforms]
+        );
+      }
     }
   }
 }
