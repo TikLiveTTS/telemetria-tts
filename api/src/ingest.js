@@ -4,10 +4,14 @@ const crypto = require('crypto');
 const { pool } = require('./db');
 const { geoFromIp, clientIp, normalizeIp, nullGeo } = require('./geo');
 const connectors = require('./connectors');
-const { parseBatch } = require('./middleware/validate');
+const { parseBatch, ID_RE } = require('./middleware/validate');
 
 // ponytail: se reinicia al reiniciar la API; persistirla cuando haga falta historial entre reinicios.
 const ingestFailures = { batches: 0, events: 0 };
+// ponytail: idem, cuenta batches aceptados con el token compartido (clientes sin firma HMAC).
+let legacyIngestCount = 0;
+
+class SessionOwnershipError extends Error {}
 
 function recordIngestFailure(payload, err) {
   ingestFailures.batches += 1;
@@ -19,11 +23,16 @@ function recordIngestFailure(payload, err) {
   });
 }
 
-function ingestFailureStatus() {
+function ingestStatus() {
   return {
     ingest_failed_batches: ingestFailures.batches,
     ingest_failed_events: ingestFailures.events,
+    legacy_ingest_batches: legacyIngestCount,
   };
+}
+
+function recordLegacyIngest() {
+  legacyIngestCount += 1;
 }
 
 // Identificador corto y estable que se muestra en el panel. Se genera una
@@ -67,6 +76,15 @@ async function upsertInstall(client, payload, geo, ip) {
 // en disco cuyo startup se perdio dejaria caer todos los demas eventos por la
 // clave foranea.
 async function ensureSession(client, payload, geo, ip) {
+  // Una firma valida de una maquina no la autoriza a escribir en sesiones ajenas.
+  const { rows: owner } = await client.query(
+    'SELECT machine_id FROM sessions WHERE session_id = $1',
+    [payload.session_id]
+  );
+  if (owner.length && owner[0].machine_id !== payload.machine_id) {
+    throw new SessionOwnershipError('session_id pertenece a otra maquina');
+  }
+
   // "Primera vez" = no hay ninguna OTRA sesion de esta maquina.
   const { rows: prev } = await client.query(
     'SELECT 1 FROM sessions WHERE machine_id = $1 AND session_id <> $2 LIMIT 1',
@@ -151,7 +169,15 @@ async function processBatch(payload, geo, ip) {
     await client.query('COMMIT');
   } catch (err) {
     if (client) await client.query('ROLLBACK').catch(() => {});
-    recordIngestFailure(payload, err);
+    if (err instanceof SessionOwnershipError) {
+      console.warn('[ingest] batch_rechazado', {
+        error: err.message,
+        machine_id: payload.machine_id,
+        session_id: payload.session_id,
+      });
+    } else {
+      recordIngestFailure(payload, err);
+    }
   } finally {
     if (client) client.release();
   }
@@ -194,6 +220,41 @@ async function ingestHandler(req, res) {
   await processBatch(payload, geo, normalizeIp(rawIp));
 }
 
+// POST /api/ingest/register — alta del secreto HMAC de una instalacion. Lo
+// genera el cliente; una vez fijado no se reemplaza ni se revela (409).
+async function registerHandler(req, res, next) {
+  const { machine_id: machineId, secret } = req.body || {};
+  if (typeof machineId !== 'string' || !ID_RE.test(machineId)) {
+    return res.status(400).json({ error: 'machine_id invalido' });
+  }
+  if (typeof secret !== 'string' || secret.length < 32 || secret.length > 256) {
+    return res.status(400).json({ error: 'secret invalido' });
+  }
+
+  let registered;
+  try {
+    registered = await storeIngestSecret(machineId, secret);
+  } catch (err) {
+    return next(err);
+  }
+  if (!registered) return res.status(409).json({ error: 'machine_id ya registrado' });
+  res.json({ ok: true });
+}
+
+// Solo fija el secreto si la instalacion aun no tiene uno.
+async function storeIngestSecret(machineId, secret) {
+  const { rowCount } = await pool.query(
+    `INSERT INTO installs (machine_id, user_id, ingest_secret, ingest_secret_registered_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (machine_id) DO UPDATE SET
+       ingest_secret = EXCLUDED.ingest_secret,
+       ingest_secret_registered_at = EXCLUDED.ingest_secret_registered_at
+     WHERE installs.ingest_secret IS NULL`,
+    [machineId, newUserId(), secret]
+  );
+  return rowCount > 0;
+}
+
 // POST /api/ping — contrato v1 antiguo, traducido al conector `app`.
 async function legacyPingHandler(req, res) {
   const b = req.body || {};
@@ -223,4 +284,10 @@ async function legacyPingHandler(req, res) {
   return ingestHandler(req, res);
 }
 
-module.exports = { ingestHandler, legacyPingHandler, ingestFailureStatus };
+module.exports = {
+  ingestHandler,
+  legacyPingHandler,
+  registerHandler,
+  ingestStatus,
+  recordLegacyIngest,
+};
