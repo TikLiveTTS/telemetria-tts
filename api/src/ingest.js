@@ -77,8 +77,8 @@ async function ensureSession(client, payload, geo, ip) {
     `INSERT INTO sessions
        (session_id, machine_id, app_version, os_release,
         country, country_code, city, lat, lon, ip,
-        platforms_used, started_at, first_seen)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}',$11,$12)
+        platforms_used, started_at, last_heartbeat_at, first_seen)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'{}',$11,$11,$12)
      ON CONFLICT (session_id) DO NOTHING`,
     [
       payload.session_id, payload.machine_id, payload.app_version, payload.os.release,
