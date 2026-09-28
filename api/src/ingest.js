@@ -124,6 +124,7 @@ async function processBatch(payload, geo, ip) {
       if (!connector) continue; // conector desconocido: se descarta en silencio
 
       await connector.handle(ctx, event);
+      if (event.connector === 'app' && event.name === 'live') continue;
 
       await client.query(
         `INSERT INTO events (session_id, machine_id, connector, name, props, app_version, ts)
