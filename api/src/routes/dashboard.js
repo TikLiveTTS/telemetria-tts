@@ -22,7 +22,7 @@ function wrap(fn) {
       res.json(await fn(req));
     } catch (err) {
       console.error('[dashboard]', err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Error interno' });
     }
   };
 }
