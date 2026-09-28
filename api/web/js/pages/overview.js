@@ -45,7 +45,7 @@ function delta(now, prev) {
 // chart. Los valores/graficos se llenan despues via applyData().
 function buildLayout(view) {
   refs.installs = kpi('Instalaciones', 'accent');
-  refs.activeNow = kpi('Activos ahora', 'cyan');
+  refs.activeNow = kpi('Apps abiertas', 'cyan');
   refs.activeToday = kpi('Activos hoy', '');
   refs.activePeriod = kpi('Activos periodo', '');
   refs.newPeriod = kpi('Nuevos periodo', 'green');
@@ -91,7 +91,7 @@ function applyData(s, daily, retention, platforms) {
 
   refs.activeNow.valueEl.textContent = num(s.active_now);
   clear(refs.activeNow.subEl).append(el('span', {
-    class: 'dim', text: 'conectados en los ultimos 5 minutos', title: 'Heartbeat recibido hace menos de 5 minutos',
+    class: 'dim', text: 'con latido en los ultimos 5 minutos', title: 'App abierta con latido hace menos de 5 minutos. No indica que este transmitiendo en vivo',
   }));
 
   refs.activeToday.valueEl.textContent = num(s.active_today);

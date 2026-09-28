@@ -135,7 +135,7 @@ function statCard(count, trendPct) {
   });
 
   return el('div', { class: 'map-stat-card' },
-    el('div', { class: 'map-stat-label', text: 'Usuarios activos' }),
+    el('div', { class: 'map-stat-label', text: 'Apps abiertas' }),
     statValueEl,
     statTrendEl
   );
@@ -181,11 +181,11 @@ export async function geoPage(view) {
   view.replaceChildren(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Geografia' }),
-        el('div', { class: 'sub', text: 'Puntos en vivo: instalaciones con actividad en los ultimos 5 minutos' }))
+        el('div', { class: 'sub', text: 'Puntos: sesiones con la app abierta (latido en los ultimos 5 minutos). No indica transmision en vivo' }))
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
-      el('div', { class: 'section-title', text: 'Usuarios activos ahora' }),
+      el('div', { class: 'section-title', text: 'Apps abiertas ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
         statCard(live.count, live.trendPct)
