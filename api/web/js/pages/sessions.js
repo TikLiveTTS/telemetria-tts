@@ -147,7 +147,10 @@ function sessionBadge(s) {
 
 async function showTimeline(s) {
   openDrawer(skeleton(6));
-  const events = await api.get(`/api/dashboard/sessions/${s.session_id}/events`);
+  const [events, status] = await Promise.all([
+    api.get(`/api/dashboard/sessions/${s.session_id}/events`),
+    api.get('/api/dashboard/status'),
+  ]);
 
   openDrawer(
     el('div', { class: 'drawer-head' },
@@ -167,6 +170,7 @@ async function showTimeline(s) {
       el('dt', { text: 'Fin' }),       el('dd', { text: s.ended_at ? date(s.ended_at) : 'sin cierre registrado' }),
       el('dt', { text: 'Duracion' }),  el('dd', { text: minutes(s.session_duration_minutes) }),
       el('dt', { text: 'Ultimo latido' }), el('dd', { text: relative(s.last_heartbeat_at) }),
+      el('dt', { text: 'Errores' }),   el('dd', {}, glitchtipLink(status.glitchtip_issues_url, s.session_id)),
     ),
 
     el('div', { class: 'section-title', text: `Eventos (${events.length})` }),
@@ -186,6 +190,12 @@ async function showTimeline(s) {
         )
       : el('div', { class: 'empty', text: 'Sin eventos registrados' })
   );
+}
+
+function glitchtipLink(issuesUrl, sessionId) {
+  const query = encodeURIComponent(`telemetry_session_id:${sessionId}`);
+  return el('a', { href: `${issuesUrl}/?query=${query}`, target: '_blank', rel: 'noopener noreferrer' },
+    'Ver errores en GlitchTip');
 }
 
 function propsSummary(props) {

@@ -39,6 +39,7 @@ const config = {
   trustProxy: bool('TRUST_PROXY', false),
 
   tzDisplay: (process.env.TZ_DISPLAY || 'America/Guayaquil').trim(),
+  glitchtipIssuesUrl: (process.env.GLITCHTIP_ISSUES_URL || 'https://glitchtip.tiklivetts.es/tiklivetts/issues').trim(),
   // Lista separada por comas. "*" en cualquier posicion permite cualquier origen.
   // Cada entrada admite un unico comodin "*" (ej. "https://foo-*-bar.vercel.app")
   // para cubrir hashes de preview sin listarlos uno a uno.

@@ -59,6 +59,7 @@ router.get('/status', wrap(async () => ({
   timezone: config.tzDisplay,
   anonymize_ip: config.anonymizeIp,
   public_origin: config.publicOrigin,
+  glitchtip_issues_url: config.glitchtipIssuesUrl,
 })));
 
 // Acciones de mantenimiento desde la pagina Ajustes.
