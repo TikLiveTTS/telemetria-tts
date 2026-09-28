@@ -1,5 +1,5 @@
 import { api, qs } from '../api.js';
-import { el, clear, num, minutes, date, relative, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
+import { el, clear, num, minutes, date, relative, avatar, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
 const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '' };
@@ -43,6 +43,7 @@ export async function sessionsPage(view) {
         el('table', {},
           el('thead', {}, el('tr', {},
             el('th', { text: 'Usuario' }),
+            el('th', { text: 'Creador' }),
             el('th', { text: 'Pais' }),
             el('th', { text: 'Version' }),
             el('th', { text: 'Plataformas' }),
@@ -65,7 +66,7 @@ export async function sessionsRefresh() {
 }
 
 async function load({ silent = false } = {}) {
-  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 7 }, skeleton(3))));
+  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 8 }, skeleton(3))));
 
   const data = await api.get('/api/dashboard/sessions' + qs({
     page: ui.page, pageSize: ui.pageSize,
@@ -82,7 +83,7 @@ async function load({ silent = false } = {}) {
   clear(tbody);
 
   if (!data.rows.length) {
-    tbody.append(el('tr', {}, el('td', { colspan: 7 },
+    tbody.append(el('tr', {}, el('td', { colspan: 8 },
       el('div', { class: 'empty', text: 'Sin sesiones' }))));
     return;
   }
@@ -99,6 +100,7 @@ async function load({ silent = false } = {}) {
         }),
         s.first_seen ? el('span', { class: 'badge badge-new', text: 'PRIMERA' }) : null
       ),
+      creatorCell(s),
       el('td', {}, s.country || el('span', { class: 'dim', text: '—' }),
         s.city ? el('div', { class: 'dim', style: 'font-size:var(--fs-xs)', text: s.city }) : null),
       el('td', { text: s.app_version ? `v${s.app_version}` : '—' }),
@@ -110,6 +112,24 @@ async function load({ silent = false } = {}) {
       el('td', {}, sessionBadge(s))
     ));
   }
+}
+
+function creatorCell(s) {
+  if (!s.creator_username) {
+    return el('td', {}, el('span', { class: 'dim', text: 'sin canal identificado' }));
+  }
+
+  const username = `@${s.creator_username}`;
+  const identity = s.creator_channel_url
+    ? el('a', {
+        href: s.creator_channel_url, target: '_blank', rel: 'noopener noreferrer',
+        style: 'text-decoration:none;font-weight:600', onclick: (event) => event.stopPropagation(),
+      }, username)
+    : el('span', { text: username });
+
+  return el('td', {}, el('div', { style: 'display:flex;gap:8px;align-items:center' },
+    avatar(s.creator_avatar_url, s.creator_username), identity
+  ));
 }
 
 // El estado lo decide el servidor (app_open ya excluye sesiones cerradas).
