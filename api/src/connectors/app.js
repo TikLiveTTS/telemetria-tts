@@ -40,10 +40,14 @@ async function handle(ctx, event) {
           SET ended_at = $2,
               session_duration_minutes = COALESCE($3, session_duration_minutes),
               platforms_used = COALESCE($4, platforms_used)
-        WHERE session_id = $1
+        WHERE session_id = $1 AND $2::timestamptz >= started_at
         RETURNING platforms_used`,
       [session_id, event.ts, minutes, platforms]
     );
+    if (!rows.length) {
+      console.warn('[app] late_shutdown_discarded', { session_id });
+      return;
+    }
     const usedPlatforms = rows[0]?.platforms_used || [];
 
     if (minutes != null) {
