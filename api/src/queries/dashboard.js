@@ -72,7 +72,7 @@ async function daily(days) {
           AND first_seen_at > NOW() - make_interval(days => $1::int)
         GROUP BY 1
      )
-     SELECT d.day,
+     SELECT to_char(d.day, 'YYYY-MM-DD') AS day,
             COALESCE(s.sessions, 0) AS sessions,
             COALESCE(s.users, 0)    AS users,
             COALESCE(n.installs, 0) AS installs
