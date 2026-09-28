@@ -66,26 +66,41 @@ router.get('/embed/creators.js', limit, cors, async (req, res) => {
     '#ttt-creators{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;font-family:system-ui,sans-serif}',
     '.ttt-c{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:1px solid rgba(128,128,128,.25);border-radius:12px;text-decoration:none;color:inherit;transition:transform .15s}',
     '.ttt-c:hover{transform:translateY(-2px)}',
-    '.ttt-c img{width:56px;height:56px;border-radius:50%;object-fit:cover;background:rgba(128,128,128,.2)}',
+    '.ttt-c img,.ttt-ph{width:56px;height:56px;border-radius:50%;object-fit:cover;background:rgba(128,128,128,.2)}',
+    '.ttt-ph{display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:600}',
     '.ttt-c b{font-size:.85rem;text-align:center;word-break:break-word}',
     '.ttt-c span{font-size:.7rem;opacity:.6;text-transform:uppercase;letter-spacing:.5px}'
   ].join('');
   document.head.appendChild(css);
 
-  DATA.forEach(function (c) {
-    var a = document.createElement('a');
-    a.className = 'ttt-c';
-    a.href = c.url || '#';
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
+  function initial(c) {
+    var ph = document.createElement('div');
+    ph.className = 'ttt-ph';
+    ph.textContent = c.username.charAt(0).toUpperCase();
+    return ph;
+  }
 
-    if (c.avatar) {
-      var img = document.createElement('img');
-      img.src = c.avatar;
-      img.alt = c.display_name;
-      img.loading = 'lazy';
-      a.appendChild(img);
+  // Las URLs de avatar de TikTok caducan: sin foto o si falla, la inicial.
+  function avatar(c) {
+    if (!c.avatar) return initial(c);
+    var img = document.createElement('img');
+    img.src = c.avatar;
+    img.alt = c.display_name;
+    img.loading = 'lazy';
+    img.onerror = function () { img.replaceWith(initial(c)); };
+    return img;
+  }
+
+  DATA.forEach(function (c) {
+    var a = document.createElement(c.url ? 'a' : 'div');
+    a.className = 'ttt-c';
+    if (c.url) {
+      a.href = c.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
     }
+
+    a.appendChild(avatar(c));
 
     var b = document.createElement('b');
     b.textContent = '@' + c.username;
