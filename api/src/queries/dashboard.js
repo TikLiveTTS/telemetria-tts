@@ -139,9 +139,10 @@ async function countries(limit = 10) {
   return rows;
 }
 
-// Puntos del mapa: solo sesiones con la app abierta.
+// Puntos del mapa: solo sesiones con la app abierta. `count` coincide con los
+// puntos; `without_geo` son las apps abiertas que no se pueden dibujar.
 async function liveMap() {
-  const [{ rows: points }, { rows: counts }] = await Promise.all([
+  const [{ rows: points }, { rows: withoutGeo }] = await Promise.all([
     query(
       `SELECT s.lat, s.lon, s.city, s.country, s.country_code
          FROM sessions s
@@ -149,12 +150,14 @@ async function liveMap() {
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
     ),
     query(
-      `SELECT COUNT(*) FILTER (WHERE ${APP_OPEN})::int AS count
-         FROM sessions`
+      `SELECT COUNT(*)::int AS count
+         FROM sessions s
+        WHERE ${APP_OPEN}
+          AND (s.lat IS NULL OR s.lon IS NULL)`
     ),
   ]);
 
-  return { points, count: counts[0].count };
+  return { points, count: points.length, without_geo: withoutGeo[0].count };
 }
 
 async function versions() {
