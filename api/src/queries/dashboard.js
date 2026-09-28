@@ -5,14 +5,18 @@ const config = require('../config');
 
 const TZ = config.tzDisplay;
 
+// Unica definicion de "app abierta" que comparten /summary, /geo/live y
+// /sessions. Es presencia del proceso, no una transmision en vivo: el emisor
+// aun no manda una senal LIVE verificada.
+const APP_OPEN = `(ended_at IS NULL AND last_heartbeat_at > NOW() - INTERVAL '5 minutes')`;
+
 // KPIs de cabecera. `prev_*` permite mostrar el delta contra el periodo
 // anterior de la misma longitud.
 async function summary(days) {
   const { rows } = await query(
     `SELECT
        (SELECT COUNT(*) FROM installs)::int AS total_installs,
-       (SELECT COUNT(*) FROM sessions
-         WHERE last_heartbeat_at > NOW() - INTERVAL '5 minutes')::int AS active_now,
+       (SELECT COUNT(*) FROM sessions WHERE ${APP_OPEN})::int AS active_now,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE (started_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS active_today,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
@@ -125,20 +129,20 @@ async function countries(limit = 10) {
   return rows;
 }
 
-// Puntos del mapa: solo instalaciones con heartbeat reciente. Tambien
+// Puntos del mapa: solo sesiones con la app abierta. Tambien
 // compara contra la ventana de 5 minutos anterior, para la tendencia de la
-// tarjeta "Usuarios activos" (variacion real, no inventada).
+// tarjeta "Apps abiertas" (variacion real, no inventada).
 async function liveMap() {
   const [{ rows: points }, { rows: counts }] = await Promise.all([
     query(
       `SELECT s.lat, s.lon, s.city, s.country, s.country_code
          FROM sessions s
-        WHERE s.last_heartbeat_at > NOW() - INTERVAL '5 minutes'
+        WHERE ${APP_OPEN}
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
     ),
     query(
       `SELECT
-         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '5 minutes')::int AS now,
+         COUNT(*) FILTER (WHERE ${APP_OPEN})::int AS now,
          COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '10 minutes'
                              AND last_heartbeat_at <= NOW() - INTERVAL '5 minutes')::int AS prev
          FROM sessions`
@@ -218,6 +222,7 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             s.country, s.country_code, s.city, s.platforms_used,
             s.started_at, s.ended_at, s.last_heartbeat_at,
             s.session_duration_minutes, s.first_seen,
+            ${APP_OPEN} AS app_open,
             COUNT(*) OVER ()::int AS total_rows
        FROM sessions s
        LEFT JOIN installs i ON i.machine_id = s.machine_id

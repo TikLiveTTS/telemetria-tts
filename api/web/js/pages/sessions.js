@@ -87,11 +87,7 @@ async function load({ silent = false } = {}) {
     return;
   }
 
-  const liveThreshold = Date.now() - 5 * 60 * 1000;
-
   for (const s of data.rows) {
-    const isLive = s.last_heartbeat_at && new Date(s.last_heartbeat_at).getTime() > liveThreshold;
-
     const isMachineIdentity = !s.user_id;
 
     tbody.append(el('tr', { class: 'clickable', onclick: () => showTimeline(s) },
@@ -111,11 +107,17 @@ async function load({ silent = false } = {}) {
         : el('span', { class: 'dim', text: '—' })),
       el('td', { class: 'right nowrap', text: minutes(s.session_duration_minutes) }),
       el('td', { class: 'dim nowrap', text: date(s.started_at) }),
-      el('td', {}, isLive
-        ? el('span', { class: 'badge badge-live', text: 'EN VIVO' })
-        : el('span', { class: 'badge badge-mut', text: s.ended_at ? 'cerrada' : 'sin cierre' }))
+      el('td', {}, sessionBadge(s))
     ));
   }
+}
+
+// El estado lo decide el servidor (app_open ya excluye sesiones cerradas).
+// "App abierta" no afirma una transmision: aun no hay senal LIVE verificada.
+function sessionBadge(s) {
+  if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
+  if (s.app_open) return el('span', { class: 'badge badge-live', text: 'App abierta' });
+  return el('span', { class: 'badge badge-mut', text: 'sin cierre' });
 }
 
 async function showTimeline(s) {
