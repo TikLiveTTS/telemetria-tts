@@ -4,6 +4,7 @@ const { query } = require('../db');
 const config = require('../config');
 
 const TZ = config.tzDisplay;
+const REAL_INSTALL = "machine_id NOT LIKE 'manual:%'";
 
 // Unica definicion de "app abierta" que comparten /summary, /geo/live y
 // /sessions. Es presencia del proceso, no una transmision en vivo: el emisor
@@ -15,18 +16,21 @@ const APP_OPEN = `(ended_at IS NULL AND last_heartbeat_at > NOW() - INTERVAL '5 
 async function summary(days) {
   const { rows } = await query(
     `SELECT
-       (SELECT COUNT(*) FROM installs)::int AS total_installs,
+       (SELECT COUNT(*) FROM installs WHERE ${REAL_INSTALL})::int AS total_installs,
        (SELECT COUNT(*) FROM sessions WHERE ${APP_OPEN})::int AS active_now,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE (started_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS active_today,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE started_at > NOW() - make_interval(days => $1::int))::int AS active_period,
        (SELECT COUNT(*) FROM installs
-         WHERE (first_seen_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS new_today,
+         WHERE ${REAL_INSTALL}
+           AND (first_seen_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS new_today,
        (SELECT COUNT(*) FROM installs
-         WHERE first_seen_at > NOW() - make_interval(days => $1::int))::int AS new_period,
+         WHERE ${REAL_INSTALL}
+           AND first_seen_at > NOW() - make_interval(days => $1::int))::int AS new_period,
        (SELECT COUNT(*) FROM installs
-         WHERE first_seen_at > NOW() - make_interval(days => $1::int * 2)
+         WHERE ${REAL_INSTALL}
+           AND first_seen_at > NOW() - make_interval(days => $1::int * 2)
            AND first_seen_at <= NOW() - make_interval(days => $1::int))::int AS new_prev_period,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE started_at > NOW() - make_interval(days => $1::int * 2)
@@ -64,7 +68,8 @@ async function daily(days) {
      n AS (
        SELECT (first_seen_at AT TIME ZONE $2)::date AS day, COUNT(*)::int AS installs
          FROM installs
-        WHERE first_seen_at > NOW() - make_interval(days => $1::int)
+        WHERE ${REAL_INSTALL}
+          AND first_seen_at > NOW() - make_interval(days => $1::int)
         GROUP BY 1
      )
      SELECT d.day,
@@ -84,7 +89,8 @@ async function retention() {
     `WITH cohort AS (
        SELECT machine_id, (first_seen_at AT TIME ZONE $1)::date AS c_day
          FROM installs
-        WHERE first_seen_at > NOW() - INTERVAL '90 days'
+        WHERE ${REAL_INSTALL}
+          AND first_seen_at > NOW() - INTERVAL '90 days'
      ),
      act AS (
        SELECT DISTINCT machine_id, (started_at AT TIME ZONE $1)::date AS a_day
@@ -120,7 +126,8 @@ async function countries(limit = 10) {
             SUM(total_sessions)::int AS sessions,
             SUM(total_minutes)::int AS minutes
        FROM installs
-      WHERE country IS NOT NULL
+      WHERE ${REAL_INSTALL}
+        AND country IS NOT NULL
       GROUP BY 1, 2
       ORDER BY installs DESC
       LIMIT $1`,
@@ -161,7 +168,8 @@ async function versions() {
             ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS pct,
             MAX(last_seen_at) AS last_seen
        FROM installs
-      WHERE app_version IS NOT NULL
+      WHERE ${REAL_INSTALL}
+        AND app_version IS NOT NULL
       GROUP BY 1
       ORDER BY users DESC`
   );
