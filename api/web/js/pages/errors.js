@@ -5,11 +5,14 @@ import { openDrawer, closeDrawer } from '../drawer.js';
 // Nodo <tbody> de la tabla, guardado a nivel de modulo para que errorsRefresh
 // pueda actualizar las filas in-place sin reconstruir toda la vista.
 let tbody = null;
+let renderId = 0;
 
 export async function errorsPage(view) {
+  const myId = ++renderId;
   view.append(skeleton(3));
 
   const rows = await api.get(`/api/dashboard/errors?days=${state.days}`);
+  if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
 
   tbody = el('tbody', {}, ...errorRows(rows));
 
@@ -41,7 +44,9 @@ export async function errorsPage(view) {
 export async function errorsRefresh(view) {
   if (!tbody) return errorsPage(view);
 
+  const myId = renderId;
   const rows = await api.get(`/api/dashboard/errors?days=${state.days}`);
+  if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
   clear(tbody).append(...errorRows(rows));
 }
 

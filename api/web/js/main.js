@@ -54,9 +54,19 @@ async function fullRefresh() {
   stampRefresh();
 }
 
+let refreshing = false;
+
 async function dataRefresh() {
-  await refreshCurrent();
-  stampRefresh();
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    await refreshCurrent();
+    stampRefresh();
+  } catch (_) {
+    // El router ya avisó con un toast; "Actualizado" conserva la hora del último éxito.
+  } finally {
+    refreshing = false;
+  }
 }
 
 function wireChrome() {

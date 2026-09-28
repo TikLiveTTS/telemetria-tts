@@ -1,10 +1,14 @@
 import { api } from '../api.js';
 import { el, num, date, toast, skeleton } from '../format.js';
 
+let renderId = 0;
+
 export async function settingsPage(view) {
+  const myId = ++renderId;
   view.append(skeleton(3));
 
   const s = await api.get('/api/dashboard/status');
+  if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
   const base = location.origin;
 
   const snippet =
