@@ -49,7 +49,7 @@ export async function featuresPage(view) {
     el('div', { class: 'page-head' },
       el('div', {},
         el('h2', { text: 'Funciones' }),
-        el('div', { class: 'sub', text: `Uso por conector en los ultimos ${state.days} dias. El % es sobre usuarios activos del periodo.` })
+        el('div', { class: 'sub', text: `Uso por conector en los ultimos ${state.days} dias. El % usa el maximo diario de usuarios sobre los activos del periodo.` })
       )
     ),
     cardsWrap
@@ -97,9 +97,9 @@ function buildCard(g) {
   const pct = g.events.length ? Number(g.events[0].pct_users) : 0;
 
   const usersEl = el('div', { class: 'kpi-value accent', style: 'font-size:1.5rem', text: num(g.users) });
-  const countEl = el('div', { class: 'kpi-sub', text: `${num(g.count)} eventos` });
+  const countEl = el('div', { class: 'kpi-sub', text: `${num(g.count)} usos` });
   const barEl = el('div', { style: `height:100%;width:${Math.min(100, pct)}%;background:var(--accent)` });
-  const pctEl = el('div', { class: 'kpi-sub', text: `${pct || 0}% de los activos del periodo` });
+  const pctEl = el('div', { class: 'kpi-sub', text: `${pct || 0}% maximo diario de usuarios` });
   const eventsEl = el('div', { style: 'margin-top:10px;font-size:var(--fs-xs);color:var(--muted)' });
   fillEvents(eventsEl, g);
 
@@ -128,9 +128,9 @@ function patchCard(refs, g) {
   const pct = g.events.length ? Number(g.events[0].pct_users) : 0;
 
   refs.usersEl.textContent = num(g.users);
-  refs.countEl.textContent = `${num(g.count)} eventos`;
+  refs.countEl.textContent = `${num(g.count)} usos`;
   refs.barEl.style.width = `${Math.min(100, pct)}%`;
-  refs.pctEl.textContent = `${pct || 0}% de los activos del periodo`;
+  refs.pctEl.textContent = `${pct || 0}% maximo diario de usuarios`;
   fillEvents(refs.eventsEl, g);
 }
 
@@ -179,7 +179,7 @@ export async function featureDetailPage(view, connector) {
     ),
     days.length
       ? el('div', { class: 'card' },
-          el('div', { class: 'section-title', text: 'Eventos por dia' }),
+          el('div', { class: 'section-title', text: 'Usos por dia' }),
           el('div', { class: 'chart-box tall' }, el('canvas', { id: 'c-feat' }))
         )
       : el('div', { class: 'card' }, el('div', { class: 'empty', text: 'Sin datos para este conector' }))
