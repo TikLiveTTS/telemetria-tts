@@ -119,19 +119,25 @@ function renderMap(container, points) {
 }
 
 let statValueEl = null;
+let statWithoutGeoEl = null;
 
-function statCard(count) {
-  statValueEl = el('div', { class: 'map-stat-value', text: num(count) });
+function statCard(live) {
+  statValueEl = el('div', { class: 'map-stat-value' });
+  statWithoutGeoEl = el('div', { class: 'map-stat-label' });
+  updateStatCard(live);
 
   return el('div', { class: 'map-stat-card' },
     el('div', { class: 'map-stat-label', text: 'Apps abiertas' }),
-    statValueEl
+    statValueEl,
+    statWithoutGeoEl
   );
 }
 
-function updateStatCard(count) {
+function updateStatCard(live) {
   if (!statValueEl) return;
-  statValueEl.textContent = num(count);
+  statValueEl.textContent = num(live.count);
+  statWithoutGeoEl.textContent = `+${num(live.without_geo)} sin ubicacion`;
+  statWithoutGeoEl.hidden = !live.without_geo;
 }
 
 let countriesChart = null;
@@ -174,7 +180,7 @@ export async function geoPage(view) {
       el('div', { class: 'section-title', text: 'Apps abiertas ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
-        statCard(live.count)
+        statCard(live)
       )
     ),
 
@@ -224,7 +230,7 @@ export async function geoRefresh() {
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
 
   updateMapPoints(live.points);
-  updateStatCard(live.count);
+  updateStatCard(live);
 
   if (countries.length) {
     const labels = countries.slice(0, 10).map((c) => countryName(c.country_code, c.country));
