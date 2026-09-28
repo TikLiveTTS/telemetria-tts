@@ -97,6 +97,17 @@ async function ensureSession(client, payload, geo, ip) {
   }
 }
 
+async function fillSessionGeo(client, sessionId, geo) {
+  if (geo.lat === null) return;
+
+  await client.query(
+    `UPDATE sessions
+       SET country = $2, country_code = $3, city = $4, lat = $5, lon = $6
+     WHERE session_id = $1 AND lat IS NULL`,
+    [sessionId, geo.country, geo.country_code, geo.city, geo.lat, geo.lon]
+  );
+}
+
 // Procesa un batch ya validado. Todo ocurre dentro de una transaccion: o entra
 // el batch entero, o no entra nada.
 async function processBatch(payload, geo, ip) {
@@ -107,6 +118,7 @@ async function processBatch(payload, geo, ip) {
 
     const install = await upsertInstall(client, payload, geo, ip);
     await ensureSession(client, payload, geo, ip);
+    await fillSessionGeo(client, payload.session_id, geo);
 
     const ctx = {
       client,
