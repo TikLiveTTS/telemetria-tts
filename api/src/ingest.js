@@ -6,6 +6,26 @@ const { geoFromIp, clientIp, normalizeIp, nullGeo } = require('./geo');
 const connectors = require('./connectors');
 const { parseBatch } = require('./middleware/validate');
 
+// ponytail: se reinicia al reiniciar la API; persistirla cuando haga falta historial entre reinicios.
+const ingestFailures = { batches: 0, events: 0 };
+
+function recordIngestFailure(payload, err) {
+  ingestFailures.batches += 1;
+  ingestFailures.events += payload.events.length;
+  console.error('[ingest] persistence_failed', {
+    error: err.message,
+    machine_id: payload.machine_id,
+    events_lost: payload.events.length,
+  });
+}
+
+function ingestFailureStatus() {
+  return {
+    ingest_failed_batches: ingestFailures.batches,
+    ingest_failed_events: ingestFailures.events,
+  };
+}
+
 // Identificador corto y estable que se muestra en el panel. Se genera una
 // sola vez por instalacion y no vuelve a cambiar.
 function newUserId() {
@@ -80,8 +100,9 @@ async function ensureSession(client, payload, geo, ip) {
 // Procesa un batch ya validado. Todo ocurre dentro de una transaccion: o entra
 // el batch entero, o no entra nada.
 async function processBatch(payload, geo, ip) {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
 
     const install = await upsertInstall(client, payload, geo, ip);
@@ -116,10 +137,10 @@ async function processBatch(payload, geo, ip) {
 
     await client.query('COMMIT');
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('[ingest]', err.message);
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    recordIngestFailure(payload, err);
   } finally {
-    client.release();
+    if (client) client.release();
   }
 }
 
@@ -189,4 +210,4 @@ async function legacyPingHandler(req, res) {
   return ingestHandler(req, res);
 }
 
-module.exports = { ingestHandler, legacyPingHandler };
+module.exports = { ingestHandler, legacyPingHandler, ingestFailureStatus };
