@@ -27,6 +27,24 @@ async function handle(ctx, event) {
     return;
   }
 
+  if (event.name === 'live') {
+    await client.query(
+      `UPDATE sessions
+          SET live_heartbeat_at = NOW()
+        WHERE session_id = $1 AND ended_at IS NULL`,
+      [session_id]
+    );
+    return;
+  }
+
+  if (event.name === 'live_stopped') {
+    await client.query(
+      'UPDATE sessions SET live_heartbeat_at = NULL WHERE session_id = $1',
+      [session_id]
+    );
+    return;
+  }
+
   if (event.name === 'shutdown') {
     const minutes = Number.isFinite(event.props.duration_minutes)
       ? Math.max(0, Math.round(event.props.duration_minutes))

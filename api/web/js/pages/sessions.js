@@ -136,7 +136,12 @@ function creatorCell(s) {
 // "App abierta" no afirma una transmision: aun no hay senal LIVE verificada.
 function sessionBadge(s) {
   if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
-  if (s.app_open) return el('span', { class: 'badge badge-live', text: 'App abierta' });
+  if (s.app_open || s.connected) {
+    return el('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' },
+      s.app_open ? el('span', { class: 'badge badge-live', text: 'App abierta' }) : null,
+      s.connected ? el('span', { class: 'badge badge-live', text: 'Conectado a plataforma' }) : null
+    );
+  }
   return el('span', { class: 'badge badge-mut', text: 'sin cierre' });
 }
 

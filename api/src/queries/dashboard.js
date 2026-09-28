@@ -10,6 +10,7 @@ const REAL_INSTALL = "machine_id NOT LIKE 'manual:%'";
 // /sessions. Es presencia del proceso, no una transmision en vivo: el emisor
 // aun no manda una senal LIVE verificada.
 const APP_OPEN = `(ended_at IS NULL AND received_at > NOW() - INTERVAL '5 minutes')`;
+const CONNECTED = `(ended_at IS NULL AND live_heartbeat_at > NOW() - INTERVAL '150 seconds')`;
 
 // KPIs de cabecera. `prev_*` permite mostrar el delta contra el periodo
 // anterior de la misma longitud.
@@ -18,6 +19,7 @@ async function summary(days) {
     `SELECT
        (SELECT COUNT(*) FROM installs WHERE ${REAL_INSTALL})::int AS total_installs,
        (SELECT COUNT(*) FROM sessions WHERE ${APP_OPEN})::int AS active_now,
+       (SELECT COUNT(*) FROM sessions WHERE ${CONNECTED})::int AS connected_now,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
          WHERE (started_at AT TIME ZONE $2)::date = (NOW() AT TIME ZONE $2)::date)::int AS active_today,
        (SELECT COUNT(DISTINCT machine_id) FROM sessions
@@ -227,6 +229,7 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             c.username AS creator_username, c.avatar_url AS creator_avatar_url,
             c.channel_url AS creator_channel_url,
             ${APP_OPEN} AS app_open,
+            ${CONNECTED} AS connected,
             COUNT(*) OVER ()::int AS total_rows
        FROM sessions s
        LEFT JOIN installs i ON i.machine_id = s.machine_id
