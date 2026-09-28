@@ -4,6 +4,7 @@ const express = require('express');
 const q = require('../queries/dashboard');
 const config = require('../config');
 const { runRollup, purgeOldEvents } = require('../jobs');
+const { ingestFailureStatus } = require('../ingest');
 
 const router = express.Router();
 
@@ -53,6 +54,7 @@ router.get('/sessions/:id/events', wrap((req) => q.sessionEvents(req.params.id))
 
 router.get('/status', wrap(async () => ({
   ...(await q.systemStatus()),
+  ...ingestFailureStatus(),
   retention_days: config.retentionDays,
   timezone: config.tzDisplay,
   anonymize_ip: config.anonymizeIp,
