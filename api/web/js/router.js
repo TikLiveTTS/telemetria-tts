@@ -16,7 +16,7 @@ export function currentRoute() {
   return current;
 }
 
-function pathFromHash() {
+export function pathFromHash() {
   const raw = (location.hash || '#/overview').slice(1);
   return raw.split('?')[0] || '/overview';
 }
