@@ -222,10 +222,20 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             s.country, s.country_code, s.city, s.platforms_used,
             s.started_at, s.ended_at, s.last_heartbeat_at,
             s.session_duration_minutes, s.first_seen,
+            c.username AS creator_username, c.avatar_url AS creator_avatar_url,
+            c.channel_url AS creator_channel_url,
             ${APP_OPEN} AS app_open,
             COUNT(*) OVER ()::int AS total_rows
        FROM sessions s
        LEFT JOIN installs i ON i.machine_id = s.machine_id
+       -- Una sesion no guarda su canal: se muestra el canal mas reciente del usuario.
+       LEFT JOIN LATERAL (
+         SELECT username, avatar_url, channel_url
+           FROM creators
+          WHERE user_id = i.user_id
+          ORDER BY last_seen_at DESC, id DESC
+          LIMIT 1
+       ) c ON TRUE
        ${clause}
       ORDER BY s.started_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
