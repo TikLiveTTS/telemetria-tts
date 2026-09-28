@@ -136,9 +136,7 @@ async function countries(limit = 10) {
   return rows;
 }
 
-// Puntos del mapa: solo sesiones con la app abierta. Tambien
-// compara contra la ventana de 5 minutos anterior, para la tendencia de la
-// tarjeta "Apps abiertas" (variacion real, no inventada).
+// Puntos del mapa: solo sesiones con la app abierta.
 async function liveMap() {
   const [{ rows: points }, { rows: counts }] = await Promise.all([
     query(
@@ -148,17 +146,12 @@ async function liveMap() {
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
     ),
     query(
-      `SELECT
-         COUNT(*) FILTER (WHERE ${APP_OPEN})::int AS now,
-         COUNT(*) FILTER (WHERE last_heartbeat_at > NOW() - INTERVAL '10 minutes'
-                             AND last_heartbeat_at <= NOW() - INTERVAL '5 minutes')::int AS prev
+      `SELECT COUNT(*) FILTER (WHERE ${APP_OPEN})::int AS count
          FROM sessions`
     ),
   ]);
 
-  const { now, prev } = counts[0];
-  const trendPct = prev > 0 ? Math.round(((now - prev) / prev) * 100) : null;
-  return { points, count: now, trendPct };
+  return { points, count: counts[0].count };
 }
 
 async function versions() {
