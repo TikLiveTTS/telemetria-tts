@@ -119,33 +119,19 @@ function renderMap(container, points) {
 }
 
 let statValueEl = null;
-let statTrendEl = null;
 
-function trendText(trendPct) {
-  if (trendPct == null) return '';
-  return `${trendPct >= 0 ? '↗' : '↘'} ${Math.abs(trendPct)}% vs 5 min atras`;
-}
-
-function statCard(count, trendPct) {
+function statCard(count) {
   statValueEl = el('div', { class: 'map-stat-value', text: num(count) });
-  statTrendEl = el('div', {
-    class: 'map-trend',
-    style: `color:${trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)'}`,
-    text: trendText(trendPct),
-  });
 
   return el('div', { class: 'map-stat-card' },
     el('div', { class: 'map-stat-label', text: 'Apps abiertas' }),
-    statValueEl,
-    statTrendEl
+    statValueEl
   );
 }
 
-function updateStatCard(count, trendPct) {
+function updateStatCard(count) {
   if (!statValueEl) return;
   statValueEl.textContent = num(count);
-  statTrendEl.style.color = trendPct >= 0 ? 'var(--accent-2)' : 'var(--err)';
-  statTrendEl.textContent = trendText(trendPct);
 }
 
 let countriesChart = null;
@@ -188,7 +174,7 @@ export async function geoPage(view) {
       el('div', { class: 'section-title', text: 'Apps abiertas ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
-        statCard(live.count, live.trendPct)
+        statCard(live.count)
       )
     ),
 
@@ -238,7 +224,7 @@ export async function geoRefresh() {
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
 
   updateMapPoints(live.points);
-  updateStatCard(live.count, live.trendPct);
+  updateStatCard(live.count);
 
   if (countries.length) {
     const labels = countries.slice(0, 10).map((c) => countryName(c.country_code, c.country));
