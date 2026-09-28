@@ -24,7 +24,7 @@ const COUNTRIES = [
 ];
 
 const VERSIONS = ['1.5.8', '1.5.8', '1.5.8', '1.5.7', '1.5.6', '1.4.0'];
-const PLATFORMS = ['tiktok', 'twitch', 'youtube'];
+const PLATFORMS = ['tiktok', 'twitch', 'youtube', 'kick'];
 const HANDLES = [
   'khunsa', 'lunastream', 'gamerx', 'pixelpanda', 'nocturno', 'sofiaplays',
   'elmagotv', 'ritmolatino', 'zonagamer', 'mariposa_live', 'kbros', 'dj_neon',
@@ -160,6 +160,7 @@ async function seed(count) {
         const followers = between(80, 90000);
         const url = platform === 'tiktok' ? `https://www.tiktok.com/@${handle}`
           : platform === 'twitch' ? `https://www.twitch.tv/${handle}`
+          : platform === 'kick' ? `https://kick.com/${handle}`
           : `https://www.youtube.com/@${handle}`;
 
         const { rows } = await client.query(

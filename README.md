@@ -21,7 +21,7 @@ en Portainer apuntando a este repositorio y arranca sin tocar nada mas.
 |---|---|---|
 | `app` | arranque, latido cada 5 min, cierre, duracion de sesion | completo |
 | `creators` | @ y link del canal de cada streamer, seguidores, plataforma | completo |
-| `platforms` | conexiones y desconexiones de TikTok / Twitch / YouTube | completo |
+| `platforms` | conexiones y desconexiones de TikTok / Twitch / YouTube / Kick | completo |
 | `obs` | conexion y clips guardados | completo |
 | `mobile` | emparejado y comandos del panel movil | completo |
 | `overlays` | overlays abiertos en OBS | completo |
@@ -35,6 +35,9 @@ en Portainer apuntando a este repositorio y arranca sin tocar nada mas.
 
 Los eventos de alta frecuencia (mensajes TTS, sonidos, filtros) se agregan en
 el cliente y viajan como un contador por latido, no uno por mensaje.
+
+> Pendiente: verificar LIVE real para Twitch/Kick y usar OBS como evidencia;
+> requiere cambios en el emisor y no forma parte de esta telemetria.
 
 `tts.skipped` y `tts.queue_overflow` nacen en la ventana de la app
 (`public/index.html`) y llegan al bus via un canal IPC en `preload.js`/
