@@ -155,7 +155,7 @@ let renderId = 0;
 function countryRow(c) {
   return el('tr', {},
     el('td', { text: countryName(c.country_code, c.country) }),
-    el('td', { class: 'right', text: num(c.users) }),
+    el('td', { class: 'right', text: num(c.installs) }),
     el('td', { class: 'right', text: num(c.sessions) }),
     el('td', { class: 'right nowrap', title: 'Tiempo total acumulado (formato h m)', text: minutes(c.minutes) })
   );
@@ -194,18 +194,19 @@ export async function geoPage(view) {
 
     el('div', { class: 'grid-2' },
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Top paises' }),
+        el('div', { class: 'section-title', text: 'Instalaciones historicas por pais' }),
+        el('div', { class: 'sub', text: 'Acumuladas; no respetan el periodo seleccionado' }),
         el('div', { class: 'chart-box' }, el('canvas', { id: 'c-countries' }))
       ),
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Detalle por pais' }),
+        el('div', { class: 'section-title', text: 'Detalle historico por pais' }),
         el('div', { class: 'table-wrap', style: 'max-height:250px;overflow-y:auto' },
           el('table', {},
             el('thead', {}, el('tr', {},
               el('th', { text: 'Pais' }),
-              el('th', { class: 'right', text: 'Usuarios' }),
-              el('th', { class: 'right', text: 'Sesiones' }),
-              el('th', { class: 'right', text: 'Tiempo' })
+              el('th', { class: 'right', text: 'Instalaciones' }),
+              el('th', { class: 'right', text: 'Sesiones historicas' }),
+              el('th', { class: 'right', text: 'Tiempo historico' })
             )),
             countriesTbody
           )
@@ -220,8 +221,8 @@ export async function geoPage(view) {
     ? barChart(
         document.getElementById('c-countries'),
         countries.slice(0, 10).map((c) => countryName(c.country_code, c.country)),
-        countries.slice(0, 10).map((c) => c.users),
-        { horizontal: true, label: 'Usuarios' }
+        countries.slice(0, 10).map((c) => c.installs),
+        { horizontal: true, label: 'Instalaciones historicas' }
       )
     : null;
 }
@@ -241,9 +242,9 @@ export async function geoRefresh() {
 
   if (countries.length) {
     const labels = countries.slice(0, 10).map((c) => countryName(c.country_code, c.country));
-    const data = countries.slice(0, 10).map((c) => c.users);
+    const data = countries.slice(0, 10).map((c) => c.installs);
     if (countriesChart) updateChart(countriesChart, labels, [data]);
-    else countriesChart = barChart(document.getElementById('c-countries'), labels, data, { horizontal: true, label: 'Usuarios' });
+    else countriesChart = barChart(document.getElementById('c-countries'), labels, data, { horizontal: true, label: 'Instalaciones historicas' });
   }
 
   if (countriesTbody) {
