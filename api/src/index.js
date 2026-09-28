@@ -10,10 +10,11 @@ const { pool, waitForDb } = require('./db');
 const { migrate } = require('../db/migrate');
 const jobs = require('./jobs');
 
-const { ingestHandler, legacyPingHandler } = require('./ingest');
+const { ingestHandler, legacyPingHandler, registerHandler } = require('./ingest');
 const { makeRateLimit } = require('./middleware/rateLimit');
 const { requireAuth } = require('./middleware/requireAuth');
 const { requireIngestToken } = require('./middleware/requireIngestToken');
+const { requireIngestAuth } = require('./middleware/requireIngestAuth');
 
 const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
@@ -60,8 +61,11 @@ app.use(healthRoutes);
 app.use(publicRoutes);
 
 const ingestLimit = makeRateLimit({ max: 60, windowMs: 60 * 1000 });
-app.post('/api/ingest', requireIngestToken, ingestLimit, ingestHandler);
-app.post('/api/ping', requireIngestToken, ingestLimit, legacyPingHandler);
+// El token compartido queda solo como credencial de arranque para registrar
+// el secreto HMAC de cada instalacion.
+app.post('/api/ingest/register', ingestLimit, requireIngestToken, registerHandler);
+app.post('/api/ingest', ingestLimit, requireIngestAuth, ingestHandler);
+app.post('/api/ping', ingestLimit, requireIngestAuth, legacyPingHandler);
 
 app.use('/api/auth', authRoutes);
 

@@ -73,4 +73,4 @@ function parseBatch(body) {
   };
 }
 
-module.exports = { parseBatch, str, UUID_RE };
+module.exports = { parseBatch, str, UUID_RE, ID_RE };
