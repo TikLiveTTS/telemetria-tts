@@ -95,6 +95,7 @@ async function retention() {
      act AS (
        SELECT DISTINCT machine_id, (started_at AT TIME ZONE $1)::date AS a_day
          FROM sessions
+        WHERE started_at > NOW() - INTERVAL '90 days'
      ),
      ret AS (
        SELECT c.machine_id,
