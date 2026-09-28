@@ -57,7 +57,8 @@ async function handle(ctx, event) {
       `UPDATE sessions
           SET ended_at = $2,
               session_duration_minutes = COALESCE($3, session_duration_minutes),
-              platforms_used = COALESCE($4, platforms_used)
+              platforms_used = COALESCE($4, platforms_used),
+              live_heartbeat_at = NULL
         WHERE session_id = $1 AND $2::timestamptz >= started_at
         RETURNING platforms_used`,
       [session_id, event.ts, minutes, platforms]
