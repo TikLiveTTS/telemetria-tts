@@ -35,29 +35,31 @@ async function handle(ctx, event) {
       ? event.props.platforms_used.filter((p) => typeof p === 'string').slice(0, 8)
       : null;
 
-    await client.query(
+    const { rows } = await client.query(
       `UPDATE sessions
           SET ended_at = $2,
               session_duration_minutes = COALESCE($3, session_duration_minutes),
               platforms_used = COALESCE($4, platforms_used)
-        WHERE session_id = $1`,
+        WHERE session_id = $1
+        RETURNING platforms_used`,
       [session_id, event.ts, minutes, platforms]
     );
+    const usedPlatforms = rows[0]?.platforms_used || [];
 
     if (minutes != null) {
       await client.query(
         'UPDATE installs SET total_minutes = total_minutes + $2 WHERE machine_id = $1',
         [machine_id, minutes]
       );
-      // Los minutos tambien se acumulan en los canales de este usuario, que es
-      // lo que se muestra en la tabla de creadores.
-      await client.query(
-        `UPDATE creators
-            SET total_minutes = total_minutes + $2,
-                total_sessions = total_sessions + 1
-          WHERE machine_id = $1`,
-        [machine_id, minutes]
-      );
+      if (usedPlatforms.length) {
+        await client.query(
+          `UPDATE creators
+              SET total_minutes = total_minutes + $2,
+                  total_sessions = total_sessions + 1
+            WHERE machine_id = $1 AND platform = ANY($3::text[])`,
+          [machine_id, minutes, usedPlatforms]
+        );
+      }
     }
   }
 }
