@@ -43,13 +43,22 @@ test('cinco instalaciones con listas solapadas cuentan usuarios distintos', () =
   assert.deepEqual([...counts].filter(([, users]) => users.size >= 3).map(([word]) => word), ['spam', 'caps']);
 });
 
-test('un payload inválido no borra la lista existente', async () => {
+test('una palabra inválida se descarta sin rechazar el resto de la lista', async () => {
   const calls = [];
-  const client = { query: async (...args) => calls.push(args) };
+  const client = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; } };
   const result = await blockedWords.handle(
     { client, machine_id: 'machine-1' },
-    { name: 'blocked_words_snapshot', ts: new Date(), props: props(['@privado']) }
+    { name: 'blocked_words_snapshot', ts: new Date(), props: props(['@privado', 'spam', 'https://x.com']) }
   );
+  assert.equal(result, false);
+  assert.deepEqual(calls[1].params[0], ['spam']);
+});
+
+test('un payload mal formado no escribe nada', async () => {
+  const calls = [];
+  const client = { query: async (...args) => calls.push(args) };
+  const bad = { words: 'no-es-lista', snapshot_at: '2026-10-03T00:00:00Z', list_hash: hash };
+  const result = await blockedWords.handle({ client, machine_id: 'machine-1' }, { name: 'blocked_words_snapshot', props: bad });
   assert.equal(result, false);
   assert.equal(calls.length, 0);
 });

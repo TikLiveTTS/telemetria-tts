@@ -29,8 +29,7 @@ function snapshot(props) {
   const snapshotAt = new Date(props.snapshot_at);
   if (Number.isNaN(snapshotAt.getTime()) || snapshotAt.getTime() > Date.now() + 5 * 60 * 1000) return null;
 
-  const words = props.words.map(normalizeWord);
-  if (words.some((word) => word === null)) return null;
+  const words = props.words.map(normalizeWord).filter((word) => word !== null);
   return {
     words: [...new Set(words)], language: props.lang ? props.lang.toLowerCase() : null,
     snapshotAt, listHash: props.list_hash.toLowerCase(),
