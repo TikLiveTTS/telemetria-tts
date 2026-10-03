@@ -178,6 +178,18 @@ escribirla, sin perder el mapa ni las estadisticas por pais.
 `RETENTION_DAYS` (365 por defecto) controla cuanto viven los eventos crudos.
 Los agregados diarios sobreviven a la purga.
 
+### Palabras bloqueadas agregadas
+
+Cuando el cliente habilitado envía un snapshot, el servidor vuelve a sanear cada
+palabra y guarda solo su forma normalizada y el vínculo seudonimizado con la
+instalación. Nunca se guardan los snapshots crudos ni se muestran listas por
+usuario. Se descartan @, URL, correos, secuencias de 6+ dígitos y entradas de
+más de tres palabras o 40 caracteres. El panel y las exportaciones solo exponen
+palabras presentes en al menos `BLOCKED_WORDS_K` instalaciones distintas (3 por
+defecto). Las palabras ya reportadas no se restan si después desaparecen de una
+lista; solo se eliminan en cascada al ejercer el borrado de una instalación.
+`ACTIVE_DAYS=0` no aplica filtro de inactividad; se puede configurar después.
+
 ## Licencia
 
 MIT

@@ -12,10 +12,11 @@ import { versionsPage, versionsRefresh } from './pages/versions.js';
 import { sessionsPage, sessionsRefresh } from './pages/sessions.js';
 import { errorsPage, errorsRefresh } from './pages/errors.js';
 import { settingsPage } from './pages/settings.js';
+import { blockedWordsPage, blockedWordsRefresh } from './pages/blocked-words.js';
 
 const PERIOD_OPTIONS = [1, 7, 30, 90, 3650];
 // Solo estas vistas mandan ?days= a la API; el resto ignora el periodo.
-const PERIOD_ROUTES = ['/overview', '/features', '/errors'];
+const PERIOD_ROUTES = ['/overview', '/features', '/errors', '/blocked-words'];
 
 const loginEl = () => document.getElementById('login');
 const appEl = () => document.getElementById('app');
@@ -28,6 +29,7 @@ register('/features/:param', featureDetailPage, featureDetailRefresh);
 register('/versions', versionsPage, versionsRefresh);
 register('/sessions', sessionsPage, sessionsRefresh);
 register('/errors', errorsPage, errorsRefresh);
+register('/blocked-words', blockedWordsPage, blockedWordsRefresh);
 register('/settings', settingsPage, settingsPage);
 
 function showLogin() {

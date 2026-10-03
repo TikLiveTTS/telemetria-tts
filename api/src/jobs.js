@@ -15,6 +15,14 @@ async function runRollup(daysBack = 3) {
   return rows[0].touched;
 }
 
+async function rebuildBlockedWordWeekly() {
+  const { rows } = await query('SELECT rebuild_blocked_word_weekly($1, $2) AS touched', [
+    config.activeDays,
+    config.tzDisplay,
+  ]);
+  return rows[0].touched;
+}
+
 // Borra eventos crudos mas viejos que RETENTION_DAYS.
 // Los agregados de feature_daily sobreviven: se pierde el detalle, no la serie.
 async function purgeOldEvents() {
@@ -48,6 +56,11 @@ function start() {
       console.error('[jobs] rollup fallo:', err.message);
     }
     try {
+      await rebuildBlockedWordWeekly();
+    } catch (err) {
+      console.error('[jobs] palabras bloqueadas fallo:', err.message);
+    }
+    try {
       const deleted = await purgeOldEvents();
       if (deleted > 0) console.log(`[jobs] purga: ${deleted} eventos borrados`);
     } catch (err) {
@@ -64,6 +77,7 @@ function start() {
   // Un primer pase al arrancar (con ventana amplia, por si el servicio estuvo
   // caido) y luego cada hora.
   runRollup(90).catch((err) => console.error('[jobs] rollup inicial fallo:', err.message));
+  rebuildBlockedWordWeekly().catch((err) => console.error('[jobs] palabras bloqueadas inicial fallo:', err.message));
   sweepAbandonedSessions().catch((err) => console.error('[jobs] cierre inicial de sesiones fallo:', err.message));
 
   const timer = setInterval(tick, 60 * 60 * 1000);
@@ -71,4 +85,4 @@ function start() {
   return timer;
 }
 
-module.exports = { start, runRollup, purgeOldEvents, sweepAbandonedSessions };
+module.exports = { start, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, sweepAbandonedSessions };

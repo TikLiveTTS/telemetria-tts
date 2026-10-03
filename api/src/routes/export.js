@@ -2,6 +2,9 @@
 
 const express = require('express');
 const { pool } = require('../db');
+const blockedWords = require('../queries/blocked-words');
+const config = require('../config');
+const { csvCell, exportCell } = require('../export-cells');
 
 const router = express.Router();
 
@@ -29,13 +32,43 @@ const DATASETS = {
   events: `SELECT * FROM events WHERE ts > NOW() - INTERVAL '30 days' ORDER BY ts DESC`,
 };
 
-function csvCell(v) {
-  if (v === null || v === undefined) return '';
-  const s = Array.isArray(v)
-    ? v.join('|')
-    : (v instanceof Date ? v.toISOString() : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+
+function blockedWordsOptions(req) {
+  const int = (name, fallback, max) => {
+    const value = parseInt(req.query[name], 10);
+    return Number.isFinite(value) ? Math.min(max, Math.max(1, value)) : fallback;
+  };
+  return {
+    days: int('days', 30, 3650),
+    k: int('k', config.blockedWordsK, 100000),
+    lang: typeof req.query.lang === 'string' ? req.query.lang.slice(0, 16) : null,
+    prefix: typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 40) : null,
+  };
 }
+
+async function blockedWordsExport(req, res, separator, extension) {
+  try {
+    const rows = await blockedWords.exportRows(blockedWordsOptions(req));
+    res.setHeader('Content-Type', `text/${extension}; charset=utf-8`);
+    res.setHeader('Content-Disposition', `attachment; filename="blocked-words.${extension}"`);
+    if (extension === 'csv') res.write('\uFEFF');
+    res.write(['word', 'users', 'pct_users', 'first_seen', 'last_seen'].join(separator) + '\n');
+    for (const row of rows) {
+      res.write([
+        row.word_norm, row.usuarios_distintos, row.porcentaje_de_usuarios_activos,
+        row.first_seen instanceof Date ? row.first_seen.toISOString() : row.first_seen,
+        row.last_seen instanceof Date ? row.last_seen.toISOString() : row.last_seen,
+      ].map((value) => exportCell(value, separator)).join(separator) + '\n');
+    }
+    res.end();
+  } catch (err) {
+    console.error('[export]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+}
+
+router.get('/blocked-words.tsv', (req, res) => blockedWordsExport(req, res, '\t', 'tsv'));
+router.get('/blocked-words.csv', (req, res) => blockedWordsExport(req, res, ',', 'csv'));
 
 function dataset(req, res) {
   const name = String(req.params.dataset || 'sessions');

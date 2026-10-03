@@ -35,6 +35,8 @@ const config = {
   ingestToken: required('INGEST_TOKEN'),
 
   retentionDays: int('RETENTION_DAYS', 365),
+  blockedWordsK: Math.max(1, int('BLOCKED_WORDS_K', 3)),
+  activeDays: Math.max(0, int('ACTIVE_DAYS', 0)),
   anonymizeIp: bool('ANONYMIZE_IP', false),
   trustProxy: bool('TRUST_PROXY', false),
 

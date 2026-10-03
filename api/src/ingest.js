@@ -153,7 +153,8 @@ async function processBatch(payload, geo, ip) {
       const connector = connectors.get(event.connector);
       if (!connector) continue; // conector desconocido: se descarta en silencio
 
-      await connector.handle(ctx, event);
+      const handled = await connector.handle(ctx, event);
+      if (handled === false) continue;
       if (event.connector === 'app' && event.name === 'live') continue;
 
       await client.query(

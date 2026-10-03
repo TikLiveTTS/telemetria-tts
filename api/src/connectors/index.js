@@ -21,7 +21,7 @@ const list = [
   passthrough('obs'),
   passthrough('mobile'),
   passthrough('overlays'),
-  passthrough('moderation'),
+  require('./blocked-words'),
   passthrough('updates'),
   passthrough('settings'),
 ];

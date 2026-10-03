@@ -5,6 +5,7 @@ const q = require('../queries/dashboard');
 const config = require('../config');
 const { runRollup, purgeOldEvents } = require('../jobs');
 const { ingestStatus } = require('../ingest');
+const blockedWords = require('../queries/blocked-words');
 
 const router = express.Router();
 
@@ -14,6 +15,21 @@ function periodDays(req, def = 30) {
   const n = parseInt(req.query.days, 10);
   if (!Number.isFinite(n)) return def;
   return Math.min(3650, Math.max(1, n));
+}
+
+function blockedWordsOptions(req) {
+  const k = parseInt(req.query.k, 10);
+  const page = parseInt(req.query.page, 10);
+  const pageSize = parseInt(req.query.pageSize, 10);
+  const lang = typeof req.query.lang === 'string' ? req.query.lang.slice(0, 16) : null;
+  const prefix = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 40) : null;
+  return {
+    days: periodDays(req),
+    k: Number.isFinite(k) ? Math.min(100000, Math.max(1, k)) : config.blockedWordsK,
+    page: Number.isFinite(page) ? Math.max(1, page) : 1,
+    pageSize: Number.isFinite(pageSize) ? Math.min(200, Math.max(1, pageSize)) : 50,
+    lang, prefix,
+  };
 }
 
 function wrap(fn) {
@@ -36,6 +52,8 @@ router.get('/features',   wrap((req) => q.features(periodDays(req))));
 router.get('/geo/countries', wrap((req) => q.countries(Math.min(50, parseInt(req.query.limit, 10) || 10))));
 router.get('/geo/live',      wrap(() => q.liveMap()));
 router.get('/errors',        wrap((req) => q.errors(periodDays(req))));
+router.get('/blocked-words', wrap((req) => blockedWords.ranking(blockedWordsOptions(req))));
+router.get('/blocked-words/summary', wrap((req) => blockedWords.summary(blockedWordsOptions(req))));
 
 router.get('/features/:connector', wrap((req) =>
   q.featureDetail(req.params.connector, periodDays(req))
