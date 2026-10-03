@@ -84,10 +84,25 @@ Los streamers editan sus listas: agregan, quitan y cambian palabras. El ranking 
 ## Estado
 
 Fases 1–3: actualizadas con snapshots ordenados e historial semanal. `cd api &&
-npm test` pasó (18 pruebas). Revisión
+npm test` pasa 18 pruebas y salta 1 integración si falta la URL; contra
+PostgreSQL real pasó 19/19. Revisión
 responsiva por código completada con las reglas móviles existentes (`.kpis`,
 `.table-wrap` y navegación horizontal). No se inició un stack ni se desplegó,
 por estar fuera de alcance.
+
+### Prueba de integración PostgreSQL
+
+La prueba real se omite fuera de CI/local si falta `TEST_DATABASE_URL`. Con una
+base desechable ya levantada y las credenciales administrativas definidas:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgresql://telemetry:password@127.0.0.1:55432/telemetry_test'
+cd api
+npm test
+```
+
+La prueba aplica migraciones, limpia exclusivamente esa base de prueba y cubre
+snapshots, K-anonimato, cascada, historial semanal y HTTP autenticado.
 
 ## Desviaciones
 

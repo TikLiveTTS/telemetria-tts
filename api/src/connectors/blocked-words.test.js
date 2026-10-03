@@ -26,23 +26,6 @@ test('un snapshot idempotente deduplica palabras y nunca se inserta en events', 
   assert.doesNotMatch(calls.map((call) => call.sql).join('\n'), /DELETE FROM installation_blocked_words/);
 });
 
-test('cinco instalaciones con listas solapadas cuentan usuarios distintos', () => {
-  const snapshots = [
-    ['spam', 'flood'], ['spam'], ['spam', 'caps'], ['caps'], ['spam', 'caps'],
-  ];
-  const counts = new Map();
-  snapshots.forEach((words, installation) => {
-    for (const word of new Set(words)) {
-      if (!counts.has(word)) counts.set(word, new Set());
-      counts.get(word).add(installation);
-    }
-  });
-  assert.equal(counts.get('spam').size, 4);
-  assert.equal(counts.get('caps').size, 3);
-  assert.equal(counts.get('flood').size, 1);
-  assert.deepEqual([...counts].filter(([, users]) => users.size >= 3).map(([word]) => word), ['spam', 'caps']);
-});
-
 test('una palabra inválida se descarta sin rechazar el resto de la lista', async () => {
   const calls = [];
   const client = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; } };
