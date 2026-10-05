@@ -37,6 +37,31 @@ async function purgeOldEvents() {
   return rowCount;
 }
 
+// Palabras bloqueadas: la asociacion con una instalacion caduca RETENTION_DAYS despues del
+// ultimo envio que la incluyo (lo promete la politica de privacidad). Una palabra que el
+// streamer conserva se renueva en cada envio semanal; una que quito caduca. El historico
+// semanal es agregado, pero tambien se recorta, y las palabras sin referencias se borran.
+async function purgeOldBlockedWords() {
+  const { rowCount } = await query(
+    `DELETE FROM installation_blocked_words WHERE last_seen < NOW() - make_interval(days => $1::int)`,
+    [config.retentionDays]
+  );
+  await query(
+    `DELETE FROM installation_blocked_word_snapshots WHERE last_seen < NOW() - make_interval(days => $1::int)`,
+    [config.retentionDays]
+  );
+  await query(
+    `DELETE FROM blocked_word_weekly WHERE week < (NOW() - make_interval(days => $1::int))::date`,
+    [config.retentionDays]
+  );
+  await query(
+    `DELETE FROM blocked_words w
+      WHERE NOT EXISTS (SELECT 1 FROM installation_blocked_words i WHERE i.word_norm = w.word_norm)
+        AND NOT EXISTS (SELECT 1 FROM blocked_word_weekly k WHERE k.word_norm = w.word_norm)`
+  );
+  return rowCount;
+}
+
 async function sweepAbandonedSessions() {
   const { rowCount } = await query(
     `UPDATE sessions
@@ -67,6 +92,12 @@ function start() {
       console.error('[jobs] purga fallo:', err.message);
     }
     try {
+      const expired = await purgeOldBlockedWords();
+      if (expired > 0) console.log(`[jobs] palabras bloqueadas caducadas: ${expired}`);
+    } catch (err) {
+      console.error('[jobs] purga de palabras bloqueadas fallo:', err.message);
+    }
+    try {
       const closed = await sweepAbandonedSessions();
       if (closed > 0) console.log(`[jobs] sesiones cerradas: ${closed}`);
     } catch (err) {
@@ -85,4 +116,4 @@ function start() {
   return timer;
 }
 
-module.exports = { start, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, sweepAbandonedSessions };
+module.exports = { start, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };

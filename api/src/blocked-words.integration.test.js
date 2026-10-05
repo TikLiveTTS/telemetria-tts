@@ -19,7 +19,7 @@ if (!process.env.TEST_DATABASE_URL) {
   const { pool } = require('./db');
   const connector = require('./connectors/blocked-words');
   const words = require('./queries/blocked-words');
-  const { rebuildBlockedWordWeekly } = require('./jobs');
+  const { rebuildBlockedWordWeekly, purgeOldBlockedWords } = require('./jobs');
   const { requireAuth } = require('./middleware/requireAuth');
   const { issueCookie } = require('./auth');
   const dashboardRoutes = require('./routes/dashboard');
@@ -102,6 +102,14 @@ if (!process.env.TEST_DATABASE_URL) {
       assert.match(body, /spam/);
       assert.doesNotMatch(body, /rare/);
     }
+
+    // Retencion: la asociacion caduca RETENTION_DAYS despues de su ultimo envio.
+    await pool.query("UPDATE installation_blocked_words SET last_seen = NOW() - INTERVAL '400 days' WHERE machine_id = 'machine-4'");
+    await pool.query("INSERT INTO blocked_words (word_norm) VALUES ('huerfana') ON CONFLICT DO NOTHING");
+    assert.equal(await purgeOldBlockedWords(), 1);
+    assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM installation_blocked_words WHERE machine_id = 'machine-4'")).rows[0].n, 0);
+    assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM installation_blocked_words WHERE machine_id = 'machine-3'")).rows[0].n, 2, 'lo reciente se conserva');
+    assert.equal((await pool.query("SELECT 1 FROM blocked_words WHERE word_norm = 'huerfana'")).rowCount, 0, 'palabra sin referencias borrada');
 
     await pool.query("DELETE FROM installs WHERE machine_id = 'machine-5'");
     ranking = await words.ranking({ k: 3 });
