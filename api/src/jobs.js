@@ -2,6 +2,7 @@
 
 const { query } = require('./db');
 const config = require('./config');
+const { syncAvatars, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
 
 // Tareas periodicas dentro del propio proceso: no hace falta cron ni un
 // contenedor extra.
@@ -72,6 +73,47 @@ async function sweepAbandonedSessions() {
   return rowCount;
 }
 
+// Publica en la web los creadores nuevos que nadie decidio a mano. Ocultar o
+// despublicar desde el panel marca publish_decided y el job no lo revierte.
+async function autoPublishCreators() {
+  const { rowCount } = await query(
+    `UPDATE creators
+        SET is_public = TRUE, publish_decided = TRUE
+      WHERE NOT is_public AND NOT is_hidden AND NOT publish_decided`
+  );
+  return rowCount;
+}
+
+// Tarea diaria del widget de creadores: publica los nuevos, descarga sus
+// fotos a AVATAR_DIR y pide a la app una URL fresca para los que no tienen
+// foto o la tienen hace mas de un mes (renovacion mensual).
+async function daily() {
+  try {
+    const published = await autoPublishCreators();
+    console.log(`[jobs] creadores publicados automaticamente: ${published}`);
+  } catch (err) {
+    console.error('[jobs] publicacion de creadores fallo:', err.message);
+  }
+  try {
+    const removed = await purgeHiddenAvatars();
+    if (removed > 0) console.log(`[jobs] fotos de creadores ocultos borradas: ${removed}`);
+  } catch (err) {
+    console.error('[jobs] borrado de fotos ocultas fallo:', err.message);
+  }
+  try {
+    const saved = await syncAvatars();
+    console.log(`[jobs] fotos de creadores guardadas: ${saved}`);
+  } catch (err) {
+    console.error('[jobs] fotos de creadores fallo:', err.message);
+  }
+  try {
+    const asked = await requestFreshAvatars();
+    if (asked > 0) console.log(`[jobs] fotos pedidas de nuevo a la app: ${asked}`);
+  } catch (err) {
+    console.error('[jobs] pedido de fotos fallo:', err.message);
+  }
+}
+
 function start() {
   const tick = async () => {
     try {
@@ -111,9 +153,13 @@ function start() {
   rebuildBlockedWordWeekly().catch((err) => console.error('[jobs] palabras bloqueadas inicial fallo:', err.message));
   sweepAbandonedSessions().catch((err) => console.error('[jobs] cierre inicial de sesiones fallo:', err.message));
 
+  daily();
+
   const timer = setInterval(tick, 60 * 60 * 1000);
   if (timer.unref) timer.unref();
+  const dailyTimer = setInterval(daily, 24 * 60 * 60 * 1000);
+  if (dailyTimer.unref) dailyTimer.unref();
   return timer;
 }
 
-module.exports = { start, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };
+module.exports = { start, daily, autoPublishCreators, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };

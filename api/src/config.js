@@ -50,6 +50,9 @@ const config = {
     .map((o) => o.trim())
     .filter(Boolean),
 
+  // Carpeta de fotos de creadores (volumen persistente en el VPS).
+  avatarDir: (process.env.AVATAR_DIR || '/data/fotos').trim(),
+
   // Limites de la ingesta
   maxEventsPerBatch: int('MAX_EVENTS_PER_BATCH', 50),
   maxBodyBytes: int('MAX_BODY_BYTES', 64 * 1024),
