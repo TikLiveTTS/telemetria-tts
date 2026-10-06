@@ -92,27 +92,55 @@ function parseTiktokAvatar(html) {
   }
 }
 
-async function tiktokProfileAvatar(username) {
-  const res = await fetch(`https://www.tiktok.com/@${encodeURIComponent(username)}`, {
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36';
+// Twitch solo pone og:image en el HTML que sirve a crawlers de previews.
+const CRAWLER_UA = 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)';
+
+async function fetchHtml(url, ua) {
+  const res = await fetch(url, {
     signal: AbortSignal.timeout(15000),
-    headers: {
-      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36',
-      'accept-language': 'es-ES,es;q=0.9,en;q=0.8',
-    },
+    headers: { 'user-agent': ua, 'accept-language': 'es-ES,es;q=0.9,en;q=0.8' },
   });
-  if (!res.ok) return null;
-  return parseTiktokAvatar(await res.text());
+  return res.ok ? res.text() : null;
 }
 
-// Creadores publicos de TikTok sin foto o con foto de mas de un mes: se toma
-// la foto actual de su perfil publico, sin esperar a que abran la app. Uno
-// cada 2 s para no martillar a TikTok.
+function ogImage(html) {
+  const m = /<meta[^>]+property="og:image"[^>]+content="([^"]+)"/.exec(html)
+    || /<meta[^>]+content="([^"]+)"[^>]+property="og:image"/.exec(html);
+  return m ? m[1].replace(/&amp;/g, '&') : null;
+}
+
+// Foto actual del perfil publico, segun la plataforma. null si no se pudo.
+// ponytail: depende del HTML de cada plataforma; si cambia o bloquea la IP
+// del VPS, queda la via de la app (requestFreshAvatars).
+async function profileAvatar(c) {
+  if (c.platform === 'tiktok') {
+    const html = await fetchHtml(`https://www.tiktok.com/@${encodeURIComponent(c.username)}`, BROWSER_UA);
+    return html && parseTiktokAvatar(html);
+  }
+  if (c.platform === 'youtube' && c.channel_url) {
+    const html = await fetchHtml(c.channel_url, BROWSER_UA);
+    const url = html && ogImage(html);
+    // yt3 acepta el tamano en la URL: 176 px sobra para el widget.
+    return url && /^https:\/\/yt3\.(googleusercontent|ggpht)\.com\//.test(url) ? url.replace(/=s\d+/, '=s176') : null;
+  }
+  if (c.platform === 'twitch') {
+    const html = await fetchHtml(`https://www.twitch.tv/${encodeURIComponent(c.username)}`, CRAWLER_UA);
+    const url = html && ogImage(html);
+    return url && /^https:\/\/static-cdn\.jtvnw\.net\/jtv_user_pictures\//.test(url) ? url : null;
+  }
+  return null;
+}
+
+// Creadores publicos sin foto o con foto de mas de un mes: se toma la foto
+// actual de su perfil publico (TikTok, YouTube, Twitch), sin esperar a que
+// abran la app. Uno cada 2 s para no martillar a las plataformas.
 async function refreshFromProfiles(limit = 2000) {
   const { rows } = await query(
-    `SELECT c.id, c.username, a.file AS old_file
+    `SELECT c.id, c.platform, c.username, c.channel_url, a.file AS old_file
        FROM creators c
        LEFT JOIN creator_avatars a ON a.creator_id = c.id
-      WHERE c.platform = 'tiktok' AND c.is_public AND NOT c.is_hidden
+      WHERE c.platform IN ('tiktok', 'youtube', 'twitch') AND c.is_public AND NOT c.is_hidden
         AND (a.file IS NULL OR a.fetched_at < NOW() - INTERVAL '30 days')
       ORDER BY c.featured_order NULLS LAST, c.follower_count DESC NULLS LAST
       LIMIT $1`,
@@ -124,14 +152,14 @@ async function refreshFromProfiles(limit = 2000) {
   let saved = 0;
   for (const r of rows) {
     try {
-      const url = await tiktokProfileAvatar(r.username);
+      const url = await profileAvatar(r);
       if (url && await saveAvatar(r.id, url, r.old_file)) {
         saved++;
         // Se alinea avatar_url con la foto vigente para que syncAvatars no
         // reintente la URL caducada que tenia la ficha.
         await query('UPDATE creators SET avatar_url = $2 WHERE id = $1', [r.id, url]);
       }
-    } catch (_) { /* perfil privado/borrado o TikTok no respondio */ }
+    } catch (_) { /* perfil privado/borrado o la plataforma no respondio */ }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   return saved;
@@ -172,4 +200,4 @@ async function purgeHiddenAvatars() {
   return rows.length;
 }
 
-module.exports = { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, EXT };
+module.exports = { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, profileAvatar, EXT };
