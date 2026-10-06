@@ -34,6 +34,9 @@ services:
       TZ: ${TZ:-America/Guayaquil}
       TZ_DISPLAY: ${TZ_DISPLAY:-America/Guayaquil}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-*}
+      AVATAR_DIR: /data/fotos
+    volumes:
+      - fotos:/data/fotos
     ports:
       - "${PORT:-4000}:4000"
     restart: unless-stopped
@@ -51,5 +54,6 @@ services:
 
 volumes:
   pgdata:
+  fotos:
   caddy_data:
   caddy_config:

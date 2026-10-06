@@ -1,5 +1,6 @@
 'use strict';
 
+const path = require('path');
 const express = require('express');
 const config = require('../config');
 const c = require('../queries/creators');
@@ -38,11 +39,36 @@ function cors(req, res, next) {
 
 router.get('/api/public/creators', limit, cors, async (req, res) => {
   try {
-    const creators = await c.publicList(Math.min(500, parseInt(req.query.limit, 10) || 200));
+    const creators = await c.publicList(Math.min(2000, parseInt(req.query.limit, 10) || 200), base(req));
     res.json({ count: creators.length, creators });
   } catch (err) {
     console.error('[public]', err.message);
     res.status(500).json({ error: 'error interno' });
+  }
+});
+
+// Origen publico de esta API, para que las fotos se pidan aqui desde
+// cualquier web que incruste el widget. Sin esquema ("//host"): detras del
+// proxy req.protocol puede decir http y la web https lo bloquearia.
+function base(req) {
+  return `//${req.get('host')}`;
+}
+
+// Foto guardada en AVATAR_DIR. Solo de creadores publicos.
+router.get('/api/public/avatars/:id', limit, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(404).end();
+  try {
+    const found = await c.publicAvatar(id);
+    if (!found) return res.status(404).end();
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.type(found.content_type);
+    res.sendFile(path.basename(found.file), { root: config.avatarDir }, (err) => {
+      if (err && !res.headersSent) res.status(404).end();
+    });
+  } catch (err) {
+    console.error('[public] avatar', err.message);
+    res.status(500).end();
   }
 });
 
@@ -52,7 +78,7 @@ router.get('/api/public/creators', limit, cors, async (req, res) => {
 router.get('/embed/creators.js', limit, cors, async (req, res) => {
   let creators = [];
   try {
-    creators = await c.publicList(200);
+    creators = await c.publicList(2000, base(req));
   } catch (_) { /* se sirve el widget vacio */ }
 
   res.type('application/javascript');

@@ -125,6 +125,7 @@ async function patch(id, body) {
   }
 
   if (!sets.length) return null;
+  if ('is_public' in body || 'is_hidden' in body) sets.push('publish_decided = TRUE');
 
   const { rows } = await query(
     `UPDATE creators SET ${sets.join(', ')} WHERE id = $1 RETURNING *`,
@@ -196,9 +197,9 @@ async function createManual({ platform, username, display_name, channel_url, ava
 }
 
 const BULK_ACTIONS = {
-  publish: 'is_public = TRUE',
-  unpublish: 'is_public = FALSE',
-  hide: 'is_hidden = TRUE, is_public = FALSE',
+  publish: 'is_public = TRUE, publish_decided = TRUE',
+  unpublish: 'is_public = FALSE, publish_decided = TRUE',
+  hide: 'is_hidden = TRUE, is_public = FALSE, publish_decided = TRUE',
   unhide: 'is_hidden = FALSE',
 };
 
@@ -281,10 +282,14 @@ async function merge(keepId, mergeId) {
 }
 
 // Lo unico que sale al mundo exterior. Nunca machine_id, IP ni notas.
-async function publicList(limit = 200) {
+// `avatarBase` es el origen publico de esta API (las fotos se sirven desde
+// aqui, no desde el CDN de TikTok, cuyas URLs caducan).
+async function publicList(limit = 200, avatarBase = '') {
   const { rows } = await query(
-    `SELECT platform, username, display_name, channel_url, avatar_url, follower_count
-       FROM creators
+    `SELECT c.id, platform, username, display_name, channel_url, avatar_url, follower_count,
+            a.file IS NOT NULL AS has_avatar
+       FROM creators c
+       LEFT JOIN creator_avatars a ON a.creator_id = c.id
       WHERE is_public AND NOT is_hidden
       ORDER BY featured_order NULLS LAST, follower_count DESC NULLS LAST, last_seen_at DESC
       LIMIT $1`,
@@ -295,9 +300,19 @@ async function publicList(limit = 200) {
     username: r.username,
     display_name: r.display_name || r.username,
     url: r.channel_url,
-    avatar: r.avatar_url,
+    avatar: r.has_avatar ? `${avatarBase}/api/public/avatars/${r.id}` : r.avatar_url,
     followers: r.follower_count,
   }));
 }
 
-module.exports = { list, stats, detail, patch, bulk, forceResolve, merge, publicList, createManual };
+async function publicAvatar(id) {
+  const { rows } = await query(
+    `SELECT a.content_type, a.file
+       FROM creator_avatars a JOIN creators c ON c.id = a.creator_id
+      WHERE a.creator_id = $1 AND a.file IS NOT NULL AND c.is_public AND NOT c.is_hidden`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { list, stats, detail, patch, bulk, forceResolve, merge, publicList, publicAvatar, createManual };

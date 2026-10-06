@@ -14,6 +14,10 @@ COPY db/ ./db/
 COPY web/ ./web/
 COPY tools/ ./tools/
 
+# Fotos de creadores (volumen "fotos" en compose). Se crea aqui con dueño
+# node para que el volumen nuevo herede el permiso de escritura.
+RUN mkdir -p /data/fotos && chown node:node /data/fotos
+
 # node:alpine trae el usuario "node" (uid 1000) sin privilegios
 USER node
 
