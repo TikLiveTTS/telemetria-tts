@@ -2,7 +2,7 @@
 
 const { query } = require('./db');
 const config = require('./config');
-const { syncAvatars, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
+const { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
 
 // Tareas periodicas dentro del propio proceso: no hace falta cron ni un
 // contenedor extra.
@@ -105,6 +105,12 @@ async function daily() {
     console.log(`[jobs] fotos de creadores guardadas: ${saved}`);
   } catch (err) {
     console.error('[jobs] fotos de creadores fallo:', err.message);
+  }
+  try {
+    const fresh = await refreshFromProfiles();
+    console.log(`[jobs] fotos tomadas del perfil de TikTok: ${fresh}`);
+  } catch (err) {
+    console.error('[jobs] fotos desde perfiles fallo:', err.message);
   }
   try {
     const asked = await requestFreshAvatars();

@@ -29,3 +29,11 @@ test('download solo acepta imagenes de tamano razonable', async (t) => {
   assert.strictEqual(await download(`${base}/big.jpg`), null);
   assert.strictEqual(await download(`${base}/expired`), null);
 });
+
+test('parseTiktokAvatar saca la foto del HTML del perfil y rechaza otros dominios', () => {
+  const { parseTiktokAvatar } = require('./avatars');
+  const html = '..."avatarMedium":"https:\u002F\u002Fp16-common-sign.tiktokcdn.com\u002Fabc~tplv.jpeg?x-expires=1"...';
+  assert.strictEqual(parseTiktokAvatar(html), 'https://p16-common-sign.tiktokcdn.com/abc~tplv.jpeg?x-expires=1');
+  assert.strictEqual(parseTiktokAvatar('"avatarMedium":"https:\u002F\u002Fevil.example.com\u002Fx.jpg"'), null);
+  assert.strictEqual(parseTiktokAvatar('<html>captcha</html>'), null);
+});
