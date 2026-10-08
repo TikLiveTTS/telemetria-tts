@@ -28,7 +28,7 @@ function kpi(label, cls) {
 // Delta contra el periodo anterior de la misma longitud.
 function delta(now, prev) {
   if (prev === null || prev === undefined) {
-    return el('span', { class: 'dim', text: 'sin datos del periodo anterior' });
+    return el('span', { class: 'dim', text: `sin datos de los ${state.days} dias anteriores` });
   }
   const prevNum = Number(prev);
   const nowNum = Number(now);
@@ -38,7 +38,7 @@ function delta(now, prev) {
   }
   const pct = Math.round(((nowNum - prevNum) / prevNum) * 100);
   const up = pct >= 0;
-  return el('span', { class: `delta ${up ? 'up' : 'down'}`, text: `${up ? '▲' : '▼'} ${Math.abs(pct)}% vs periodo anterior` });
+  return el('span', { class: `delta ${up ? 'up' : 'down'}`, text: `${up ? '▲' : '▼'} ${Math.abs(pct)}% vs ${state.days} dias anteriores` });
 }
 
 // Arma el DOM una sola vez: 8 tarjetas KPI (vacias) + los 3 contenedores de
@@ -48,8 +48,8 @@ function buildLayout(view) {
   refs.activeNow = kpi('Apps abiertas', 'cyan');
   refs.connectedNow = kpi('Conectado a plataforma', 'cyan');
   refs.activeToday = kpi('Activos hoy', '');
-  refs.activePeriod = kpi('Activos periodo', '');
-  refs.newPeriod = kpi('Nuevos periodo', 'green');
+  refs.activePeriod = kpi(`Activos ${state.days} dias`, '');
+  refs.newPeriod = kpi(`Nuevos ${state.days} dias`, 'green');
   refs.avgSession = kpi('Duracion media de sesion', 'yellow');
   refs.creators = kpi('Creadores', '');
 

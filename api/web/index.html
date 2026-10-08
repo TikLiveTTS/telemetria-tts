@@ -42,19 +42,6 @@
         <small id="last-refresh">—</small>
       </div>
     </div>
-
-    <div class="header-right">
-      <div class="seg" id="period">
-        <button data-days="1">1d</button>
-        <button data-days="7">7d</button>
-        <button data-days="30" class="active">30d</button>
-        <button data-days="90">90d</button>
-        <button data-days="3650">Todo</button>
-      </div>
-      <small id="period-note" hidden>Este periodo no aplica aqui</small>
-      <button class="btn" id="btn-refresh" title="Refrescar">&#8635;</button>
-      <button class="btn" id="btn-logout">Salir</button>
-    </div>
   </header>
 
   <div class="layout">
@@ -62,12 +49,13 @@
       <a href="#/overview"><span class="ico">&#9632;</span> Resumen</a>
       <a href="#/creators"><span class="ico">&#9733;</span> Creadores</a>
       <a href="#/geo"><span class="ico">&#9673;</span> Geografia</a>
+      <a href="#/geo-history"><span class="ico">&#9719;</span> Historial geografico</a>
       <a href="#/features"><span class="ico">&#9635;</span> Funciones</a>
       <a href="#/versions"><span class="ico">&#9674;</span> Versiones</a>
       <a href="#/sessions"><span class="ico">&#9776;</span> Sesiones</a>
-      <a href="#/errors"><span class="ico">&#9888;</span> Errores</a>
       <a href="#/blocked-words"><span class="ico">&#9636;</span> Palabras bloqueadas</a>
       <a href="#/settings"><span class="ico">&#9881;</span> Ajustes</a>
+      <button class="nav-logout" id="btn-logout"><span class="ico">&#8617;</span> Salir</button>
     </nav>
 
     <main id="view"></main>

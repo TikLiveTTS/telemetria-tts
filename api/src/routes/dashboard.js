@@ -47,11 +47,11 @@ router.get('/summary',    wrap((req) => q.summary(periodDays(req))));
 router.get('/daily',      wrap((req) => q.daily(periodDays(req))));
 router.get('/retention',  wrap(() => q.retention()));
 router.get('/platforms',  wrap((req) => q.platformMix(periodDays(req))));
-router.get('/versions',   wrap(() => q.versions()));
+router.get('/versions',   wrap((req) => q.versions(periodDays(req))));
 router.get('/features',   wrap((req) => q.features(periodDays(req))));
 router.get('/geo/countries', wrap((req) => q.countries(Math.min(50, parseInt(req.query.limit, 10) || 10))));
 router.get('/geo/live',      wrap(() => q.liveMap()));
-router.get('/errors',        wrap((req) => q.errors(periodDays(req))));
+router.get('/geo/history',   wrap(() => q.geoHistory()));
 router.get('/blocked-words', wrap((req) => blockedWords.ranking(blockedWordsOptions(req))));
 router.get('/blocked-words/summary', wrap((req) => blockedWords.summary(blockedWordsOptions(req))));
 
@@ -67,6 +67,17 @@ router.get('/sessions', wrap((req) => q.sessions({
   version: req.query.version || null,
   q: req.query.q || null,
 })));
+
+router.get('/installs/:machineId', async (req, res) => {
+  try {
+    const profile = await q.installProfile(req.params.machineId);
+    if (!profile) return res.status(404).json({ error: 'Instalacion no encontrada' });
+    res.json(profile);
+  } catch (err) {
+    console.error('[dashboard]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
 
 router.get('/sessions/:id/events', wrap((req) => q.sessionEvents(req.params.id)));
 

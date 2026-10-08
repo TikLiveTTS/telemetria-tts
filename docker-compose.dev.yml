@@ -1,0 +1,8 @@
+# Desarrollo local: API construida desde ./api y web/ montado (editas y F5).
+# docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build postgres api
+services:
+  api:
+    build: ./api
+    pull_policy: build
+    volumes:
+      - ./api/web:/app/web:ro

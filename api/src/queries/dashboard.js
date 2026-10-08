@@ -144,7 +144,7 @@ async function countries(limit = 10) {
 async function liveMap() {
   const [{ rows: points }, { rows: withoutGeo }] = await Promise.all([
     query(
-      `SELECT s.lat, s.lon, s.city, s.country, s.country_code
+      `SELECT s.machine_id, s.lat, s.lon, s.city, s.country, s.country_code
          FROM sessions s
         WHERE ${APP_OPEN}
           AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
@@ -160,7 +160,24 @@ async function liveMap() {
   return { points, count: points.length, without_geo: withoutGeo[0].count };
 }
 
-async function versions() {
+// Historial del mapa: sesiones con ubicacion que estuvieron abiertas en las
+// ultimas 48 h. Fin = cierre o ultimo latido; el cliente decide que puntos
+// pintar en cada instante. Sale de `sessions`, no hace falta tabla aparte.
+async function geoHistory() {
+  const { rows } = await query(
+    `SELECT s.machine_id, s.lat, s.lon, s.city, s.country, s.country_code,
+            s.started_at AS start, COALESCE(s.ended_at, s.received_at) AS end
+       FROM sessions s
+      WHERE COALESCE(s.ended_at, s.received_at) > NOW() - INTERVAL '48 hours'
+        AND s.lat IS NOT NULL AND s.lon IS NOT NULL
+      ORDER BY s.started_at`
+  );
+  return rows;
+}
+
+// Solo maquinas vistas en el periodo: cada install guarda su version ACTUAL,
+// pero quien dejo la app se queda para siempre en la vieja e inflaria esas filas.
+async function versions(days) {
   const { rows } = await query(
     `SELECT app_version,
             COUNT(*)::int AS users,
@@ -169,8 +186,10 @@ async function versions() {
        FROM installs
       WHERE ${REAL_INSTALL}
         AND app_version IS NOT NULL
+        AND last_seen_at > NOW() - make_interval(days => $1::int)
       GROUP BY 1
-      ORDER BY users DESC`
+      ORDER BY users DESC`,
+    [days]
   );
   return rows;
 }
@@ -267,28 +286,6 @@ async function sessionEvents(sessionId, limit = 500) {
   return rows;
 }
 
-// Errores agrupados por firma.
-async function errors(days, limit = 100) {
-  const { rows } = await query(
-    `SELECT signature,
-            MIN(where_at) AS where_at,
-            (array_agg(message ORDER BY ts DESC))[1] AS message,
-            (array_agg(stack   ORDER BY ts DESC))[1] AS stack,
-            COUNT(*)::int AS occurrences,
-            COUNT(DISTINCT machine_id)::int AS machines,
-            array_agg(DISTINCT app_version) AS versions,
-            MIN(ts) AS first_seen,
-            MAX(ts) AS last_seen
-       FROM app_errors
-      WHERE ts > NOW() - make_interval(days => $1::int)
-      GROUP BY signature
-      ORDER BY occurrences DESC
-      LIMIT $2`,
-    [days, limit]
-  );
-  return rows;
-}
-
 // Mix de plataformas: % de sesiones del periodo en que aparece cada una.
 async function platformMix(days) {
   const { rows } = await query(
@@ -309,6 +306,53 @@ async function platformMix(days) {
   return rows;
 }
 
+// Ficha de una instalacion (clic en un punto del mapa). Sin IP ni palabras
+// bloqueadas: esas solo se muestran agregadas.
+async function installProfile(machineId) {
+  const { rows } = await query(
+    `SELECT machine_id, user_id, first_seen_at, last_seen_at, app_version, os_platform,
+            os_release, locale, country, country_code, city, total_sessions, total_minutes
+       FROM installs WHERE machine_id = $1`,
+    [machineId]
+  );
+  if (!rows.length) return null;
+  const install = rows[0];
+
+  const [{ rows: creators }, { rows: recent }, { rows: platforms }, { rows: features }] = await Promise.all([
+    query(
+      `SELECT id, platform, username, display_name, channel_url, avatar_url, follower_count
+         FROM creators
+        WHERE machine_id = $1 OR ($2::text IS NOT NULL AND user_id = $2)
+        ORDER BY follower_count DESC NULLS LAST`,
+      [machineId, install.user_id]
+    ),
+    query(
+      `SELECT session_id, started_at, ended_at, session_duration_minutes, app_version, platforms_used
+         FROM sessions WHERE machine_id = $1
+        ORDER BY started_at DESC LIMIT 10`,
+      [machineId]
+    ),
+    query(
+      `SELECT p AS platform, COUNT(*)::int AS sessions
+         FROM sessions, unnest(platforms_used) p
+        WHERE machine_id = $1
+        GROUP BY p ORDER BY sessions DESC`,
+      [machineId]
+    ),
+    // Por session_id para usar idx_events_session_ts; events no tiene indice por machine_id.
+    query(
+      `SELECT e.connector, e.name, COUNT(*)::int AS uses
+         FROM events e
+        WHERE e.session_id IN (SELECT session_id FROM sessions WHERE machine_id = $1)
+        GROUP BY e.connector, e.name
+        ORDER BY uses DESC LIMIT 10`,
+      [machineId]
+    ),
+  ]);
+
+  return { ...install, creators, recent_sessions: recent, platforms, features };
+}
+
 // Estado interno que se muestra en la pagina Ajustes.
 async function systemStatus() {
   const { rows } = await query(
@@ -325,7 +369,7 @@ async function systemStatus() {
 }
 
 module.exports = {
-  summary, daily, retention, countries, liveMap, versions,
-  features, featureDetail, sessions, sessionEvents, errors,
+  summary, daily, retention, countries, liveMap, geoHistory, versions,
+  features, featureDetail, sessions, sessionEvents, installProfile,
   platformMix, systemStatus,
 };

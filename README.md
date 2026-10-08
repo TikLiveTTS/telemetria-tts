@@ -26,7 +26,6 @@ en Portainer apuntando a este repositorio y arranca sin tocar nada mas.
 | `mobile` | emparejado y comandos del panel movil | completo |
 | `overlays` | overlays abiertos en OBS | completo |
 | `updates` | comprobaciones e instalaciones de version | completo |
-| `errors` | errores de la app, agrupados por firma | completo |
 | `settings` | foto de la configuracion al arrancar | completo |
 | `tts` | mensajes leidos, idioma, rate limit, saltados y desbordes de cola | completo |
 | `music` | peticiones de cancion, skips y reproducciones de playlist | completo |

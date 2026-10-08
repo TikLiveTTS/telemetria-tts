@@ -30,7 +30,7 @@ export const PLATFORM_LABELS = { tiktok: 'TikTok', twitch: 'Twitch', youtube: 'Y
 
 // Nombre legible por conector. Compartido entre Funciones y Sesiones.
 export const CONNECTOR_LABELS = {
-  app: 'App', creators: 'Creadores', platforms: 'Plataformas', errors: 'Errores',
+  app: 'App', creators: 'Creadores', platforms: 'Plataformas',
   tts: 'TTS', music: 'Musica', soundpad: 'Soundpad', obs: 'OBS',
   mobile: 'Movil', overlays: 'Overlays', moderation: 'Moderacion',
   updates: 'Actualizaciones', settings: 'Ajustes',

@@ -13,7 +13,6 @@ const list = [
   require('./app'),
   require('./creators'),
   require('./platforms'),
-  require('./errors'),
   // Estos solo necesitan la fila generica en `events`:
   passthrough('tts'),
   passthrough('music'),
