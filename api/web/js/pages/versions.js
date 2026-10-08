@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, state } from '../api.js';
 import { el, clear, num, relative, skeleton } from '../format.js';
 import { doughnutChart, updateChart } from '../charts.js';
 
@@ -21,6 +21,18 @@ function computeVersions(rows) {
   const onLatest = latest ? rows.find((r) => r.app_version === latest.app_version) : null;
   const outdated = rows.reduce((acc, r) => acc + (r.app_version === latest?.app_version ? 0 : r.users), 0);
   return { sorted, latest, onLatest, outdated };
+}
+
+// El grafico muestra las N versiones mas recientes y suma el resto en
+// "Anteriores"; la tabla sigue listandolas todas.
+const CHART_MAX = 6;
+function chartData(sorted) {
+  const top = sorted.slice(0, CHART_MAX);
+  const rest = sorted.slice(CHART_MAX).reduce((acc, r) => acc + r.users, 0);
+  return {
+    labels: [...top.map((r) => `v${r.app_version}`), ...(rest ? ['Anteriores'] : [])],
+    data: [...top.map((r) => r.users), ...(rest ? [rest] : [])],
+  };
 }
 
 // Reusado por el render inicial y por versionsRefresh: re-llena el tbody sin
@@ -55,7 +67,7 @@ export async function versionsPage(view) {
   const myId = ++renderId;
   view.append(skeleton(3));
 
-  const rows = await api.get('/api/dashboard/versions');
+  const rows = await api.get(`/api/dashboard/versions?days=${state.days}`);
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
   const { sorted, latest, onLatest, outdated } = computeVersions(rows);
 
@@ -68,7 +80,7 @@ export async function versionsPage(view) {
   view.replaceChildren(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Versiones' }),
-        el('div', { class: 'sub', text: 'Distribucion de la version instalada por maquina' }))
+        el('div', { class: 'sub', text: `Version actual de cada maquina que abrio la app en los ultimos ${state.days} dias. Al actualizar, la maquina pasa a la nueva version` }))
     ),
 
     el('div', { class: 'kpis' },
@@ -108,18 +120,13 @@ export async function versionsPage(view) {
 
   renderVersionRows(tbodyEl, sorted, latest);
 
-  chart = sorted.length
-    ? doughnutChart(
-        document.getElementById('c-versions'),
-        sorted.map((r) => `v${r.app_version}`),
-        sorted.map((r) => r.users)
-      )
-    : null;
+  const cd = chartData(sorted);
+  chart = sorted.length ? doughnutChart(document.getElementById('c-versions'), cd.labels, cd.data) : null;
 }
 
 export async function versionsRefresh(view) {
   const myId = renderId;
-  const rows = await api.get('/api/dashboard/versions');
+  const rows = await api.get(`/api/dashboard/versions?days=${state.days}`);
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
   const { sorted, latest, onLatest, outdated } = computeVersions(rows);
 
@@ -128,15 +135,9 @@ export async function versionsRefresh(view) {
   if (kpiAdoptionSubEl) kpiAdoptionSubEl.textContent = onLatest ? `${num(onLatest.users)} maquinas` : '';
   if (kpiOutdatedEl) kpiOutdatedEl.textContent = num(outdated);
 
-  if (chart) {
-    updateChart(chart, sorted.map((r) => `v${r.app_version}`), [sorted.map((r) => r.users)]);
-  } else if (sorted.length) {
-    chart = doughnutChart(
-      document.getElementById('c-versions'),
-      sorted.map((r) => `v${r.app_version}`),
-      sorted.map((r) => r.users)
-    );
-  }
+  const cd = chartData(sorted);
+  if (chart) updateChart(chart, cd.labels, [cd.data]);
+  else if (sorted.length) chart = doughnutChart(document.getElementById('c-versions'), cd.labels, cd.data);
 
   if (tbodyEl) renderVersionRows(tbodyEl, sorted, latest);
 }

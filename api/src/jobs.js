@@ -31,10 +31,6 @@ async function purgeOldEvents() {
     `DELETE FROM events WHERE ts < NOW() - make_interval(days => $1::int)`,
     [config.retentionDays]
   );
-  await query(
-    `DELETE FROM app_errors WHERE ts < NOW() - make_interval(days => $1::int)`,
-    [config.retentionDays]
-  );
   return rowCount;
 }
 

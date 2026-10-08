@@ -47,7 +47,7 @@ telemetria-tts/
     │   ├── geo.js           ip-api.com con cache LRU
     │   ├── ingest.js        POST /api/ingest, transaccional
     │   ├── jobs.js          rollup horario + purga por retencion
-    │   ├── connectors/      app · creators · platforms · errors + 9 passthrough
+    │   ├── connectors/      app · creators · platforms · blocked-words + 9 passthrough
     │   ├── queries/         dashboard.js · creators.js
     │   ├── middleware/      rateLimit · requireAuth · validate
     │   └── routes/          auth · dashboard · creators · export · public · health

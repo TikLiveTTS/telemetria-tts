@@ -62,16 +62,18 @@ nav {
   height: calc(100vh - var(--header-h));
   padding: var(--s-4) var(--s-3);
   border-right: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column;
 }
-nav a {
+nav a, .nav-logout {
   display: flex; align-items: center; gap: var(--s-3);
   padding: 9px 12px; margin-bottom: 2px;
   border-radius: var(--r-sm); text-decoration: none;
   color: var(--text-dim); font-size: var(--fs-md);
 }
-nav a:hover { background: var(--surface-2); color: var(--text); }
+.nav-logout { margin-top: auto; background: none; border: 0; cursor: pointer; font: inherit; text-align: left; }
+nav a:hover, .nav-logout:hover { background: var(--surface-2); color: var(--text); }
 nav a.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
-nav a .ico { width: 18px; text-align: center; opacity: .9; }
+nav .ico { width: 18px; text-align: center; opacity: .9; }
 
 main { padding: var(--s-6); max-width: 1500px; }
 
@@ -217,6 +219,9 @@ tbody tr.clickable { cursor: pointer; }
   box-shadow: var(--shadow); min-width: 140px; }
 .map-stat-label { font-size: var(--fs-xs); color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
+.geo-time { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); }
+.geo-time input { flex: 1; accent-color: var(--accent); }
+.geo-time b { min-width: 150px; text-align: right; font-variant-numeric: tabular-nums; }
 .map-stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; margin-top: 2px; }
 .map-trend { font-size: var(--fs-xs); margin-top: 4px; }
 
@@ -289,6 +294,6 @@ code.snippet {
   nav { position: static; height: auto; display: flex; gap: var(--s-1);
         overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
   nav a { white-space: nowrap; margin: 0; }
-  nav a .ico { display: none; }
+  nav .ico { display: none; }
   main { padding: var(--s-4); }
 }

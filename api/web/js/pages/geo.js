@@ -1,6 +1,7 @@
 import { api } from '../api.js';
-import { el, num, minutes, skeleton, countryName } from '../format.js';
+import { el, num, compact, minutes, date, relative, skeleton, countryName, avatar, platformPill, prettyEvent, CONNECTOR_LABELS } from '../format.js';
 import { barChart, updateChart } from '../charts.js';
+import { openDrawer, closeDrawer } from '../drawer.js';
 
 // Mapa real con MapLibre GL, sin API key: estilo vectorial gratis de CARTO
 // (Positron) con sus propios tiles/sprite/glyphs, nitido a cualquier zoom.
@@ -8,6 +9,7 @@ const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.
 
 let map = null;
 let mapReady = false;
+let pendingPoints = null; // llegados antes de que el mapa cargara
 
 export function destroyMap() {
   if (map) { map.remove(); map = null; }
@@ -21,7 +23,7 @@ function pointsToGeoJson(points) {
       .filter((p) => p.lat != null && p.lon != null)
       .map((p) => ({
         type: 'Feature',
-        properties: { city: p.city || '', country: countryName(p.country_code, p.country) },
+        properties: { machine_id: p.machine_id, city: p.city || '', country: countryName(p.country_code, p.country) },
         geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
       })),
   };
@@ -30,13 +32,14 @@ function pointsToGeoJson(points) {
 // Actualiza los puntos de un mapa YA cargado, sin recrearlo (usado por el
 // refresco periodico: recrear el mapa cada 60s reiniciaria zoom/posicion).
 export function updateMapPoints(points) {
-  if (!mapReady) return; // el proximo refresco lo toma cuando el mapa termine de cargar
+  if (!mapReady) { pendingPoints = points; return; }
   const source = map.getSource('points');
   if (source) source.setData(pointsToGeoJson(points));
 }
 
-function renderMap(container, points) {
+export function renderMap(container, points) {
   destroyMap();
+  pendingPoints = null;
 
   map = new maplibregl.Map({
     container,
@@ -52,7 +55,7 @@ function renderMap(container, points) {
   map.on('load', () => {
     map.addSource('points', {
       type: 'geojson',
-      data: pointsToGeoJson(points),
+      data: pointsToGeoJson(pendingPoints || points),
       cluster: true,
       clusterMaxZoom: 9,
       clusterRadius: 40,
@@ -113,9 +116,78 @@ function renderMap(container, points) {
       showPopup(e.features[0].geometry.coordinates, `<b>${label}</b><br>1 usuario`);
     });
     map.on('mouseleave', 'point', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+    // ponytail: si varios usuarios comparten coordenadas exactas, el clic abre solo el de arriba.
+    map.on('click', 'point', (e) => {
+      popup.remove();
+      showInstall(e.features[0].properties.machine_id);
+    });
 
     mapReady = true;
   });
+}
+
+// Ficha de la instalacion: perfil de creador, redes y su uso de la app.
+async function showInstall(machineId) {
+  openDrawer(skeleton(6));
+  let p;
+  try {
+    p = await api.get(`/api/dashboard/installs/${encodeURIComponent(machineId)}`);
+  } catch (err) {
+    openDrawer(el('div', { class: 'empty', text: err.message }));
+    return;
+  }
+
+  const main = p.creators[0];
+  const name = main ? (main.display_name || `@${main.username}`) : 'Usuario sin canal vinculado';
+  const location = [p.city, countryName(p.country_code, p.country)].filter((x) => x && x !== '—').join(', ');
+
+  const list = (title, items, render) => items.length
+    ? [el('div', { class: 'section-title', text: title }), el('div', { style: 'margin-bottom:var(--s-5)' }, ...items.map(render))]
+    : [];
+  const line = (...children) => el('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:var(--fs-sm)' }, ...children);
+
+  openDrawer(
+    el('div', { class: 'drawer-head' },
+      avatar(main && main.avatar_url, name, true),
+      el('div', {},
+        el('h3', { text: name }),
+        el('div', { class: 'dim', style: 'font-size:var(--fs-sm)', text: location || 'Ubicacion desconocida' })
+      ),
+      el('button', { class: 'btn btn-sm', style: 'margin-left:auto', onclick: closeDrawer }, '✕')
+    ),
+
+    ...list('Redes sociales', p.creators, (c) => line(
+      platformPill(c.platform),
+      el('a', { href: c.channel_url || '#', target: '_blank', rel: 'noopener noreferrer' }, `@${c.username}`),
+      el('span', { class: 'dim', style: 'font-size:var(--fs-xs)', text: `${compact(c.follower_count)} seguidores` })
+    )),
+
+    el('dl', { class: 'kv', style: 'margin-bottom:var(--s-5)' },
+      el('dt', { text: 'ID interno' }), el('dd', { class: 'mono', text: p.user_id || '—' }),
+      el('dt', { text: 'Sesiones' }), el('dd', { text: num(p.total_sessions) }),
+      el('dt', { text: 'Tiempo total' }), el('dd', { text: minutes(p.total_minutes) }),
+      el('dt', { text: 'Primera vez' }), el('dd', { text: date(p.first_seen_at) }),
+      el('dt', { text: 'Ultima vez' }), el('dd', { text: relative(p.last_seen_at) }),
+      el('dt', { text: 'Version app' }), el('dd', { text: p.app_version ? `v${p.app_version}` : '—' }),
+      el('dt', { text: 'Sistema' }), el('dd', { text: [p.os_platform, p.os_release].filter(Boolean).join(' ') || '—' }),
+      el('dt', { text: 'Idioma' }), el('dd', { text: p.locale || '—' })
+    ),
+
+    ...list('Plataformas usadas', p.platforms, (x) => line(
+      platformPill(x.platform), el('span', { class: 'dim', text: `${num(x.sessions)} sesiones` })
+    )),
+
+    ...list('Funciones mas usadas', p.features, (f) => line(
+      el('span', { title: `${f.connector}.${f.name}`, text: `${CONNECTOR_LABELS[f.connector] || f.connector} · ${prettyEvent(f.name)}` }),
+      el('span', { class: 'dim', style: 'margin-left:auto', text: num(f.uses) })
+    )),
+
+    ...list('Ultimas sesiones', p.recent_sessions, (s) => line(
+      el('span', { text: date(s.started_at) }),
+      el('span', { class: 'dim', text: s.ended_at ? minutes(s.session_duration_minutes) : 'abierta' }),
+      el('span', { class: 'dim', style: 'margin-left:auto', text: s.app_version ? `v${s.app_version}` : '' })
+    ))
+  );
 }
 
 let statValueEl = null;
@@ -187,7 +259,7 @@ export async function geoPage(view) {
     el('div', { class: 'grid-2' },
       el('div', { class: 'card' },
         el('div', { class: 'section-title', text: 'Instalaciones historicas por pais' }),
-        el('div', { class: 'sub', text: 'Acumuladas; no respetan el periodo seleccionado' }),
+        el('div', { class: 'sub', text: 'Acumuladas desde el inicio' }),
         el('div', { class: 'chart-box' }, el('canvas', { id: 'c-countries' }))
       ),
       el('div', { class: 'card' },

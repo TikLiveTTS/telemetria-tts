@@ -126,15 +126,6 @@ async function seed(count) {
           rows.push([sessionId, machineId, 'platforms', 'connected',
             JSON.stringify({ platform }), version, startedAt]);
         }
-        if (Math.random() < 0.06) {
-          rows.push([sessionId, machineId, 'errors', 'handled',
-            JSON.stringify({ where: 'tts', message: 'Google TTS timeout' }), version, startedAt]);
-          await client.query(
-            `INSERT INTO app_errors (machine_id, session_id, app_version, where_at, message, signature, ts)
-             VALUES ($1,$2,$3,'tts','Google TTS timeout after 8000ms','seedsig00000001',$4)`,
-            [machineId, sessionId, version, startedAt]
-          );
-        }
 
         for (const r of rows) {
           await client.query(
