@@ -6,6 +6,7 @@ const config = require('../config');
 const { runRollup, purgeOldEvents } = require('../jobs');
 const { ingestStatus } = require('../ingest');
 const blockedWords = require('../queries/blocked-words');
+const insights = require('../queries/insights');
 
 const router = express.Router();
 
@@ -48,8 +49,25 @@ router.get('/daily',      wrap((req) => q.daily(periodDays(req))));
 router.get('/retention',  wrap(() => q.retention()));
 router.get('/platforms',  wrap((req) => q.platformMix(periodDays(req))));
 router.get('/versions',   wrap((req) => q.versions(periodDays(req))));
+router.get('/versions/rollout', wrap((req) => insights.versionRollout(periodDays(req))));
+router.get('/versions/catalog', wrap(() => insights.versionCatalog()));
+// Ocultar o volver a mostrar una version. Solo marca; no borra datos.
+router.post('/versions/hidden', async (req, res) => {
+  const { version, hidden } = req.body || {};
+  if (typeof version !== 'string' || !/^[\w.+-]{1,32}$/.test(version) || typeof hidden !== 'boolean') {
+    return res.status(400).json({ error: 'version u hidden invalidos' });
+  }
+  try {
+    res.json(await insights.setVersionHidden(version, hidden));
+  } catch (err) {
+    console.error('[dashboard]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+router.get('/habits',     wrap((req) => insights.habits(periodDays(req))));
+router.get('/activation', wrap((req) => insights.activation(periodDays(req))));
 router.get('/features',   wrap((req) => q.features(periodDays(req))));
-router.get('/geo/countries', wrap((req) => q.countries(Math.min(50, parseInt(req.query.limit, 10) || 10))));
+router.get('/geo/countries', wrap((req) => q.countries(Math.min(250, parseInt(req.query.limit, 10) || 10))));
 router.get('/geo/live',      wrap(() => q.liveMap()));
 router.get('/geo/history',   wrap(() => q.geoHistory()));
 router.get('/blocked-words', wrap((req) => blockedWords.ranking(blockedWordsOptions(req))));
@@ -66,6 +84,10 @@ router.get('/sessions', wrap((req) => q.sessions({
   country: req.query.country || null,
   version: req.query.version || null,
   q: req.query.q || null,
+  machine: req.query.machine || null,
+  live: req.query.live || null,
+  sort: req.query.sort || null,
+  dir: req.query.dir || null,
 })));
 
 router.get('/installs/:machineId', async (req, res) => {

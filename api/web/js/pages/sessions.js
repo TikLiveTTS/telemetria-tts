@@ -2,9 +2,31 @@ import { api, qs } from '../api.js';
 import { el, clear, num, minutes, date, relative, avatar, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
-const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '' };
+const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '', live: '', sort: 'started', dir: 'desc' };
 
 let tbody, pagerInfo, pagePrev, pageNext;
+const sortHeads = [];
+
+// Cabecera ordenable: primer clic = mayor a menor (o mas reciente), segundo invierte.
+function sortTh(key, label, right = false) {
+  const th = el('th', { class: `sortable${right ? ' right' : ''}`, onclick: () => {
+    ui.dir = ui.sort === key && ui.dir === 'desc' ? 'asc' : 'desc';
+    ui.sort = key; ui.page = 1;
+    load();
+  } });
+  th.dataset.key = key;
+  th.dataset.label = label;
+  sortHeads.push(th);
+  return th;
+}
+
+function paintSortHeads() {
+  for (const th of sortHeads) {
+    const on = th.dataset.key === ui.sort;
+    th.classList.toggle('sorted', on);
+    th.textContent = th.dataset.label + (on ? (ui.dir === 'desc' ? ' ↓' : ' ↑') : '');
+  }
+}
 
 export async function sessionsPage(view) {
   const search = el('input', {
@@ -23,6 +45,13 @@ export async function sessionsPage(view) {
   );
   platformSel.addEventListener('change', () => { ui.platform = platformSel.value; ui.page = 1; load(); });
 
+  const liveSel = el('select', { class: 'field', 'aria-label': 'Filtrar por live' },
+    ...[['', 'Todos'], ['1', 'En live'], ['0', 'Sin live']]
+      .map(([v, l]) => el('option', { value: v, selected: v === ui.live || null }, l))
+  );
+  liveSel.addEventListener('change', () => { ui.live = liveSel.value; ui.page = 1; load(); });
+  sortHeads.length = 0;
+
   tbody = el('tbody');
   pagerInfo = el('span', { text: '—' });
   pagePrev = el('button', { class: 'btn btn-sm', onclick: () => { ui.page--; load(); } }, '← Anterior');
@@ -31,9 +60,9 @@ export async function sessionsPage(view) {
   view.append(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Sesiones' }),
-        el('div', { class: 'sub', text: 'Cada arranque de la app. Clic en una fila para ver su timeline de eventos.' })),
+        el('div', { class: 'sub', text: 'Un usuario por fila, con su ultima sesion. Clic para ver todas sus sesiones y la timeline de cada una.' })),
       el('div', { class: 'filters', style: 'margin:0' },
-        search, platformSel,
+        search, platformSel, liveSel,
         el('a', { class: 'btn btn-sm', href: '/api/export/sessions.csv' }, '⬇ CSV'),
         el('a', { class: 'btn btn-sm', href: '/api/export/sessions.json' }, '⬇ JSON')
       )
@@ -45,11 +74,12 @@ export async function sessionsPage(view) {
             el('th', { text: 'Usuario' }),
             el('th', { text: 'Creador' }),
             el('th', { text: 'Pais' }),
-            el('th', { text: 'Version' }),
+            sortTh('version', 'Version'),
             el('th', { text: 'Plataformas' }),
-            el('th', { class: 'right', text: 'Duracion' }),
-            el('th', { text: 'Inicio' }),
-            el('th', { text: 'Estado' })
+            sortTh('sessions', 'Sesiones', true),
+            sortTh('duration', 'Duracion', true),
+            sortTh('started', 'Ultimo inicio'),
+            sortTh('status', 'Estado')
           )),
           tbody
         )
@@ -66,11 +96,13 @@ export async function sessionsRefresh() {
 }
 
 async function load({ silent = false } = {}) {
-  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 8 }, skeleton(3))));
+  paintSortHeads();
+  if (!silent) clear(tbody).append(el('tr', {}, el('td', { colspan: 9 }, skeleton(3))));
 
   const data = await api.get('/api/dashboard/sessions' + qs({
     page: ui.page, pageSize: ui.pageSize,
     platform: ui.platform, country: ui.country, version: ui.version, q: ui.q,
+    live: ui.live, sort: ui.sort, dir: ui.dir,
   }));
 
   const from = (data.page - 1) * data.pageSize;
@@ -83,7 +115,7 @@ async function load({ silent = false } = {}) {
   clear(tbody);
 
   if (!data.rows.length) {
-    tbody.append(el('tr', {}, el('td', { colspan: 8 },
+    tbody.append(el('tr', {}, el('td', { colspan: 9 },
       el('div', { class: 'empty', text: 'Sin sesiones' }))));
     return;
   }
@@ -91,7 +123,7 @@ async function load({ silent = false } = {}) {
   for (const s of data.rows) {
     const isMachineIdentity = !s.user_id;
 
-    tbody.append(el('tr', { class: 'clickable', onclick: () => showTimeline(s) },
+    tbody.append(el('tr', { class: 'clickable', onclick: () => showUserSessions(s) },
       el('td', {},
         el('div', {
           class: 'mono',
@@ -107,6 +139,7 @@ async function load({ silent = false } = {}) {
       el('td', {}, (s.platforms_used || []).length
         ? (s.platforms_used || []).map(platformPill)
         : el('span', { class: 'dim', text: '—' })),
+      el('td', { class: 'right', text: num(s.session_count) }),
       el('td', { class: 'right nowrap', text: minutes(s.session_duration_minutes) }),
       el('td', { class: 'dim nowrap', text: date(s.started_at) }),
       el('td', {}, sessionBadge(s))
@@ -137,12 +170,41 @@ function creatorCell(s) {
 function sessionBadge(s) {
   if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
   if (s.app_open || s.connected) {
-    return el('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' },
-      s.app_open ? el('span', { class: 'badge badge-live', text: 'App abierta' }) : null,
-      s.connected ? el('span', { class: 'badge badge-live', text: 'Conectado a plataforma' }) : null
+    return el('div', { style: 'display:flex;flex-direction:column;align-items:flex-start;gap:4px' },
+      s.connected ? el('span', { class: 'badge badge-live', title: 'Canal conectado a la plataforma (senal cada minuto)', text: 'Live' }) : null,
+      s.app_open ? el('span', { class: 'badge badge-mut', text: 'App abierta' }) : null
     );
   }
   return el('span', { class: 'badge badge-mut', text: 'sin cierre' });
+}
+
+async function showUserSessions(u) {
+  openDrawer(skeleton(6));
+  const data = await api.get('/api/dashboard/sessions' + qs({ machine: u.machine_id, pageSize: 200 }));
+
+  openDrawer(
+    el('div', { class: 'drawer-head' },
+      el('div', {},
+        el('h3', { text: u.creator_username ? `@${u.creator_username}` : (u.user_id || 'Usuario') }),
+        el('div', { class: 'dim', style: 'font-size:var(--fs-sm)', text: `${num(data.total)} sesiones` })
+      ),
+      el('button', { class: 'btn btn-sm', style: 'margin-left:auto', onclick: closeDrawer }, '✕')
+    ),
+    el('div', { class: 'table-wrap' },
+      el('table', {},
+        el('thead', {}, el('tr', {},
+          el('th', { text: 'Inicio' }), el('th', { text: 'Version' }),
+          el('th', { class: 'right', text: 'Duracion' }), el('th', { text: 'Estado' })
+        )),
+        el('tbody', {}, ...data.rows.map((s) => el('tr', { class: 'clickable', onclick: () => showTimeline(s) },
+          el('td', { class: 'nowrap', text: date(s.started_at) }),
+          el('td', { text: s.app_version ? `v${s.app_version}` : '—' }),
+          el('td', { class: 'right nowrap', text: minutes(s.session_duration_minutes) }),
+          el('td', {}, sessionBadge(s))
+        )))
+      )
+    )
+  );
 }
 
 async function showTimeline(s) {

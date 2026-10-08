@@ -13,6 +13,9 @@ import { versionsPage, versionsRefresh } from './pages/versions.js';
 import { sessionsPage, sessionsRefresh } from './pages/sessions.js';
 import { settingsPage } from './pages/settings.js';
 import { blockedWordsPage, blockedWordsRefresh } from './pages/blocked-words.js';
+import { habitsPage } from './pages/habits.js';
+import { activationPage } from './pages/activation.js';
+import { installMapPage } from './pages/install-map.js';
 
 const loginEl = () => document.getElementById('login');
 const appEl = () => document.getElementById('app');
@@ -27,6 +30,10 @@ register('/features/:param', featureDetailPage, featureDetailRefresh);
 register('/versions', versionsPage, versionsRefresh);
 register('/sessions', sessionsPage, sessionsRefresh);
 register('/blocked-words', blockedWordsPage, blockedWordsRefresh);
+// Sin refresco: son agregados de dias; recargarlos cada 60 s solo haria parpadear los graficos.
+register('/habits', habitsPage, () => {});
+register('/activation', activationPage, () => {});
+register('/install-map', installMapPage, () => {});
 register('/settings', settingsPage, settingsPage);
 
 function showLogin() {

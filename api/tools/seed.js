@@ -21,9 +21,62 @@ const COUNTRIES = [
   ['Chile', 'CL', 'Santiago', -33.45, -70.67],
   ['Estados Unidos', 'US', 'Miami', 25.76, -80.19],
   ['Brasil', 'BR', 'Sao Paulo', -23.55, -46.63],
+  ['Venezuela', 'VE', 'Caracas', 10.48, -66.90],
+  ['Guatemala', 'GT', 'Ciudad de Guatemala', 14.63, -90.51],
+  ['Bolivia', 'BO', 'La Paz', -16.50, -68.15],
+  ['Republica Dominicana', 'DO', 'Santo Domingo', 18.49, -69.93],
+  ['Honduras', 'HN', 'Tegucigalpa', 14.07, -87.19],
+  ['Paraguay', 'PY', 'Asuncion', -25.26, -57.58],
+  ['Uruguay', 'UY', 'Montevideo', -34.90, -56.16],
+  ['Costa Rica', 'CR', 'San Jose', 9.93, -84.08],
+  ['Panama', 'PA', 'Ciudad de Panama', 8.98, -79.52],
+  ['Canada', 'CA', 'Toronto', 43.65, -79.38],
+  ['Francia', 'FR', 'Paris', 48.86, 2.35],
+  ['Italia', 'IT', 'Roma', 41.90, 12.50],
+  ['Alemania', 'DE', 'Berlin', 52.52, 13.40],
+  ['Reino Unido', 'GB', 'Londres', 51.51, -0.13],
+  ['Portugal', 'PT', 'Lisboa', 38.72, -9.14],
+  ['Noruega', 'NO', 'Oslo', 59.91, 10.75],
+  ['Marruecos', 'MA', 'Casablanca', 33.57, -7.59],
+  ['Filipinas', 'PH', 'Manila', 14.60, 120.98],
+  ['Japon', 'JP', 'Tokio', 35.68, 139.69],
+  ['Australia', 'AU', 'Sidney', -33.87, 151.21],
 ];
 
-const VERSIONS = ['1.5.8', '1.5.8', '1.5.8', '1.5.7', '1.5.6', '1.4.0'];
+// Peso de cada pais (mismo orden que COUNTRIES): Latam domina, el resto es cola.
+const COUNTRY_WEIGHTS = [30, 45, 35, 25, 20, 15, 10, 25, 12, 8, 6, 5, 6, 4, 3, 2, 3, 2, 3, 3, 3, 2, 3, 2, 1, 1, 2, 1, 1, 1];
+
+// Lanzamientos: [version, dias atras]. Cada sesion usa la ultima version
+// publicada en su fecha, con un retraso de adopcion aleatorio por usuario.
+const RELEASES = [['1.4.0', 120], ['1.5.6', 70], ['1.5.7', 40], ['1.5.8', 18], ['1.6.0', 4]];
+const VERSIONS = RELEASES.map(([v]) => v);
+
+// Hora local de inicio: casi todo por la tarde/noche, cuando se hace directo.
+const HOUR_WEIGHTS = [3, 2, 1, 1, 1, 1, 1, 2, 2, 3, 3, 4, 5, 5, 5, 6, 8, 10, 13, 15, 16, 14, 10, 6];
+
+function weighted(items, weights) {
+  let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < items.length; i++) { r -= weights[i]; if (r <= 0) return items[i]; }
+  return items[items.length - 1];
+}
+
+function versionAt(date, lagDays) {
+  const age = (Date.now() - date.getTime()) / 86400000 + lagDays;
+  return [...RELEASES].reverse().find(([, ago]) => ago >= age)?.[0] || RELEASES[0][0];
+}
+
+// Inicio de sesion en el dia `dayOffset` atras, a una hora local realista
+// segun la longitud del usuario. Fines de semana con mas probabilidad.
+function sessionStart(dayOffset, lon) {
+  let d = dayOffset;
+  const dow = new Date(Date.now() - d * 86400000).getUTCDay();
+  if ((dow === 1 || dow === 2) && Math.random() < 0.35 && d > 0) d -= 1;
+  const day = new Date(Date.now() - d * 86400000);
+  day.setUTCHours(0, 0, 0, 0);
+  const localHour = weighted([...Array(24).keys()], HOUR_WEIGHTS);
+  const t = day.getTime() + (localHour - Math.round(lon / 15)) * 3600000 + between(0, 59) * 60000;
+  return new Date(Math.min(t, Date.now() - 10 * 60000));
+}
 const PLATFORMS = ['tiktok', 'twitch', 'youtube', 'kick'];
 const HANDLES = [
   'khunsa', 'lunastream', 'gamerx', 'pixelpanda', 'nocturno', 'sofiaplays',
@@ -60,12 +113,16 @@ async function seed(count) {
     for (let i = 0; i < count; i++) {
       const machineId = `seed_${crypto.randomBytes(8).toString('hex')}`;
       const userId = 'usr_' + crypto.randomBytes(4).toString('hex');
-      const [country, code, city, lat, lon] = pick(COUNTRIES);
-      const version = pick(VERSIONS);
+      const [country, code, city, lat, lon] = weighted(COUNTRIES, COUNTRY_WEIGHTS);
+      // Dias que tarda este usuario en actualizar; algunos nunca lo hacen.
+      const lag = Math.random() < 0.1 ? 999 : Math.round(-Math.log(Math.random()) * 5);
+      // Usuarios intensivos: pocos, con sesiones largas (curva de Pareto).
+      const intensity = Math.random() < 0.12 ? 3 : Math.random() < 0.5 ? 1 : 0.4;
 
-      // Antiguedad de la instalacion: hasta 90 dias atras.
-      const ageDays = between(0, 90);
-      const firstSeen = new Date(Date.now() - ageDays * 86400000);
+      // Antiguedad de la instalacion: hasta 120 dias atras.
+      const ageDays = between(0, 120);
+      const version = versionAt(new Date(Date.now() - ageDays * 86400000), lag);
+      const firstSeen = sessionStart(ageDays, lon);
 
       await client.query(
         `INSERT INTO installs
@@ -79,19 +136,25 @@ async function seed(count) {
       );
 
       // Sesiones: mas para instalaciones viejas, con abandono realista.
-      const sessionCount = Math.max(1, Math.round(between(1, 12) * Math.exp(-ageDays / 60)));
+      const sessionCount = Math.max(1, Math.round(between(1, 25) * intensity * Math.min(1, (ageDays + 3) / 30)));
+      // Minutos hasta conectar la primera plataforma; un 12% nunca conecta.
+      const neverConnects = Math.random() < 0.12;
+      const firstConnect = weighted([0.5, 3, 10, 35, 300, 2000], [30, 30, 15, 10, 8, 7]) * (0.5 + Math.random());
       let totalMinutes = 0;
 
       for (let s = 0; s < sessionCount; s++) {
         const sessionId = crypto.randomUUID();
-        const dayOffset = between(0, Math.min(ageDays, 60));
-        const startedAt = new Date(Date.now() - dayOffset * 86400000 - between(0, 20) * 3600000);
-        const duration = between(5, 320);
+        // Sesiones repartidas desde la instalacion; la mayoria abandona pronto.
+        const dayOffset = s === 0 ? ageDays : Math.max(0, ageDays - Math.round(Math.random() ** 1.6 * ageDays));
+        const startedAt = s === 0 ? firstSeen : sessionStart(dayOffset, lon);
+        const sessionVersion = versionAt(startedAt, lag);
+        const duration = Math.max(3, Math.round(weighted([8, 35, 110, 240], [15, 25, 35, 25]) * (0.5 + Math.random()) * Math.sqrt(intensity)));
         const platforms = [...new Set(Array.from({ length: between(1, 2) }, () => pick(PLATFORMS)))];
 
         // Una parte de las sesiones recientes se deja "viva" para que el mapa
         // y el KPI de activos ahora tengan algo que mostrar.
-        const live = dayOffset === 0 && Math.random() < 0.25;
+        const live = startedAt.getTime() + duration * 60000 > Date.now()
+          || (dayOffset === 0 && Math.random() < 0.25);
         const endedAt = live ? null : new Date(startedAt.getTime() + duration * 60000);
 
         await client.query(
@@ -102,7 +165,7 @@ async function seed(count) {
               session_duration_minutes, first_seen)
            VALUES ($1,$2,$3,'10.0.26200',$4,$5,$6,$7,$8,'203.0.113.1',$9,$10,$11,$12,$13,$14)`,
           [
-            sessionId, machineId, version, country, code, city,
+            sessionId, machineId, sessionVersion, country, code, city,
             lat + (Math.random() - .5), lon + (Math.random() - .5),
             platforms, startedAt,
             live ? new Date() : endedAt,
@@ -114,17 +177,22 @@ async function seed(count) {
 
         // Eventos de la sesion
         const rows = [];
-        rows.push([sessionId, machineId, 'app', 'startup', '{}', version, startedAt]);
+        rows.push([sessionId, machineId, 'app', 'startup', '{}', sessionVersion, startedAt]);
         for (const [connector, name, weight] of EVENT_MIX) {
           const n = Math.round((weight * duration) / 200 * Math.random());
           for (let k = 0; k < n; k++) {
             const ts = new Date(startedAt.getTime() + Math.random() * duration * 60000);
-            rows.push([sessionId, machineId, connector, name, '{}', version, ts]);
+            rows.push([sessionId, machineId, connector, name, '{}', sessionVersion, ts]);
           }
         }
-        for (const platform of platforms) {
-          rows.push([sessionId, machineId, 'platforms', 'connected',
-            JSON.stringify({ platform }), version, startedAt]);
+        const connectAt = s === 0
+          ? new Date(startedAt.getTime() + firstConnect * 60000)
+          : new Date(startedAt.getTime() + between(0, 3) * 60000);
+        if (!(neverConnects && s === 0) && connectAt <= new Date()) {
+          for (const platform of platforms) {
+            rows.push([sessionId, machineId, 'platforms', 'connected',
+              JSON.stringify({ platform }), sessionVersion, connectAt]);
+          }
         }
 
         for (const r of rows) {
@@ -137,7 +205,11 @@ async function seed(count) {
       }
 
       await client.query(
-        'UPDATE installs SET total_sessions = $2, total_minutes = $3 WHERE machine_id = $1',
+        `UPDATE installs i SET total_sessions = $2, total_minutes = $3,
+                app_version = s.app_version, last_seen_at = s.started_at
+           FROM (SELECT app_version, started_at FROM sessions WHERE machine_id = $1
+                  ORDER BY started_at DESC LIMIT 1) s
+          WHERE i.machine_id = $1`,
         [machineId, sessionCount, totalMinutes]
       );
 

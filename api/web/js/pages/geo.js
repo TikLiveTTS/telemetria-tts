@@ -173,9 +173,16 @@ async function showInstall(machineId) {
       el('dt', { text: 'Idioma' }), el('dd', { text: p.locale || '—' })
     ),
 
-    ...list('Plataformas usadas', p.platforms, (x) => line(
-      platformPill(x.platform), el('span', { class: 'dim', text: `${num(x.sessions)} sesiones` })
-    )),
+    // La etiqueta enlaza al canal registrado en esa plataforma, si lo hay.
+    ...list('Plataformas usadas', p.platforms, (x) => {
+      const channel = p.creators.find((c) => c.platform === x.platform && c.channel_url);
+      return line(
+        channel
+          ? el('a', { href: channel.channel_url, target: '_blank', rel: 'noopener noreferrer', title: `Abrir @${channel.username}` }, platformPill(x.platform))
+          : el('span', { title: 'Sin canal registrado en esta plataforma' }, platformPill(x.platform)),
+        el('span', { class: 'dim', text: `${num(x.sessions)} sesiones` })
+      );
+    }),
 
     ...list('Funciones mas usadas', p.features, (f) => line(
       el('span', { title: `${f.connector}.${f.name}`, text: `${CONNECTOR_LABELS[f.connector] || f.connector} · ${prettyEvent(f.name)}` }),

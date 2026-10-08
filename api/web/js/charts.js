@@ -72,7 +72,8 @@ const base = {
   },
 };
 
-export function lineChart(canvas, labels, datasets) {
+// `stacked` apila las series (area apilada); `max` fija el tope del eje Y.
+export function lineChart(canvas, labels, datasets, { stacked = false, max } = {}) {
   return build(canvas, {
     type: 'line',
     data: {
@@ -88,7 +89,13 @@ export function lineChart(canvas, labels, datasets) {
         ...d,
       })),
     },
-    options: { ...base, scales: { x: axis({ maxTicksLimit: 12 }), y: axis({ beginAtZero: true, precision: 0 }) } },
+    options: {
+      ...base,
+      scales: {
+        x: axis({ maxTicksLimit: 12 }),
+        y: { ...axis({ beginAtZero: true, precision: 0 }), stacked, max },
+      },
+    },
   });
 }
 
@@ -138,7 +145,7 @@ export function doughnutChart(canvas, labels, data) {
   });
 }
 
-export function groupedBarChart(canvas, labels, datasets) {
+export function groupedBarChart(canvas, labels, datasets, { max = 100 } = {}) {
   return build(canvas, {
     type: 'bar',
     data: {
@@ -151,6 +158,6 @@ export function groupedBarChart(canvas, labels, datasets) {
         ...d,
       })),
     },
-    options: { ...base, scales: { x: axis(), y: axis({ beginAtZero: true, max: 100 }) } },
+    options: { ...base, scales: { x: axis(), y: { ...axis({ beginAtZero: true, precision: 0 }), max } } },
   });
 }

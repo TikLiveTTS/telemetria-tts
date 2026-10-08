@@ -2,6 +2,7 @@
 
 import { destroyCharts } from './charts.js';
 import { destroyMap } from './pages/geo.js';
+import { destroyInstallMap } from './pages/install-map.js';
 import { clear, el, toast } from './format.js';
 
 const routes = new Map();
@@ -51,6 +52,7 @@ export async function renderCurrent() {
   const view = document.getElementById('view');
   destroyCharts();
   destroyMap();
+  destroyInstallMap();
   clear(view);
 
   try {

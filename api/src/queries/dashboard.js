@@ -186,6 +186,7 @@ async function versions(days) {
        FROM installs
       WHERE ${REAL_INSTALL}
         AND app_version IS NOT NULL
+        AND app_version NOT IN (SELECT app_version FROM hidden_versions)
         AND last_seen_at > NOW() - make_interval(days => $1::int)
       GROUP BY 1
       ORDER BY users DESC`,
@@ -231,40 +232,66 @@ async function featureDetail(connector, days) {
   return rows;
 }
 
-async function sessions({ page = 1, pageSize = 50, platform, country, version, q }) {
+// Orden de la tabla de Sesiones. Version: "1.10.0" > "1.9.0" comparando los
+// numeros como array de enteros, no como texto.
+const SESSION_SORTS = {
+  started: 's.started_at',
+  sessions: 's.session_count',
+  duration: 's.session_duration_minutes',
+  // Live > app abierta > resto (cerrada / sin cierre).
+  status: `CASE WHEN COALESCE(${CONNECTED}, FALSE) THEN 2 WHEN ${APP_OPEN} THEN 1 ELSE 0 END`,
+  version: `(SELECT array_agg(m[1]::int ORDER BY n)
+               FROM regexp_matches(s.app_version, '[0-9]+', 'g') WITH ORDINALITY AS t(m, n))`,
+};
+
+// Por defecto una fila por usuario (su ultima sesion + cuantas lleva). Con
+// `machine` se listan todas las sesiones de ese usuario.
+async function sessions({ page = 1, pageSize = 50, platform, country, version, q, machine, live, sort, dir }) {
   const where = [];
   const params = [];
 
+  if (machine)  { params.push(machine);  where.push(`s.machine_id = $${params.length}`); }
   if (platform) { params.push(platform); where.push(`$${params.length} = ANY(s.platforms_used)`); }
   if (country)  { params.push(country);  where.push(`s.country_code = $${params.length}`); }
   if (version)  { params.push(version);  where.push(`s.app_version = $${params.length}`); }
   if (q)        { params.push(`%${q}%`); where.push(`(s.machine_id ILIKE $${params.length} OR i.user_id ILIKE $${params.length})`); }
 
   const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const picked = machine
+    ? 'SELECT * FROM base'
+    : 'SELECT DISTINCT ON (machine_id) * FROM base ORDER BY machine_id, started_at DESC';
+  // El filtro live mira la ultima sesion del usuario (la que se muestra).
+  const liveClause = live === '1' ? `WHERE ${CONNECTED}` : live === '0' ? `WHERE NOT COALESCE(${CONNECTED}, FALSE)` : '';
+  const order = `${SESSION_SORTS[sort] || SESSION_SORTS.started} ${dir === 'asc' ? 'ASC' : 'DESC'} NULLS LAST, s.started_at DESC`;
   params.push(pageSize, (page - 1) * pageSize);
 
   const { rows } = await query(
-    `SELECT s.session_id, s.machine_id, i.user_id, s.app_version,
+    `WITH base AS (
+       SELECT s.*, i.user_id, COUNT(*) OVER (PARTITION BY s.machine_id)::int AS session_count
+         FROM sessions s
+         LEFT JOIN installs i ON i.machine_id = s.machine_id
+         ${clause}
+     ), picked AS (${picked})
+     SELECT s.session_id, s.machine_id, s.user_id, s.app_version,
             s.country, s.country_code, s.city, s.platforms_used,
             s.started_at, s.ended_at, s.last_heartbeat_at,
-            s.session_duration_minutes, s.first_seen,
+            s.session_duration_minutes, s.first_seen, s.session_count,
             c.username AS creator_username, c.avatar_url AS creator_avatar_url,
             c.channel_url AS creator_channel_url,
             ${APP_OPEN} AS app_open,
             ${CONNECTED} AS connected,
             COUNT(*) OVER ()::int AS total_rows
-       FROM sessions s
-       LEFT JOIN installs i ON i.machine_id = s.machine_id
+       FROM picked s
        -- Una sesion no guarda su canal: se muestra el canal mas reciente del usuario.
        LEFT JOIN LATERAL (
          SELECT username, avatar_url, channel_url
            FROM creators
-          WHERE user_id = i.user_id
+          WHERE user_id = s.user_id
           ORDER BY last_seen_at DESC, id DESC
           LIMIT 1
        ) c ON TRUE
-       ${clause}
-      ORDER BY s.started_at DESC
+      ${liveClause}
+      ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
