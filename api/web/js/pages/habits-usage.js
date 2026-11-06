@@ -23,7 +23,7 @@ function window24(totals, dir) {
   return `${hh(best)}–${hh(best + WIN)}`;
 }
 
-function peakLabel(chart, peak) {
+function peakLabel(peak) {
   return {
     id: 'peak',
     afterDatasetsDraw(c) {
@@ -56,9 +56,9 @@ function peakLabel(chart, peak) {
 function lines(grid, peak) {
   const canvas = el('canvas');
   const chart = lineChart(canvas, Array.from({ length: 24 }, (_, h) => hh(h)),
-    DAYS.map((d, i) => ({ label: d, data: grid[i], color: TONES[i], fill: false, pointRadius: 0, pointHoverRadius: 4 })));
+    DAYS.map((d, i) => ({ label: d, data: grid[i], color: TONES[i], fill: false, pointRadius: 0, pointHoverRadius: 4 })),
+    { plugins: [peakLabel(peak)] });
   chart.options.plugins.legend.display = false;
-  chart.config.plugins = [peakLabel(chart, peak)];
 
   const paint = (hl) => {
     chart.data.datasets.forEach((ds, i) => {

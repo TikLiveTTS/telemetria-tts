@@ -118,6 +118,11 @@ export function platformPill(platform) {
 }
 
 // Avatar con fallback a la inicial: las URLs de TikTok caducan.
+// Foto guardada en el servidor si existe: la URL del CDN de TikTok va firmada, caduca y se ve rota.
+export function creatorPhoto(id, hasAvatar, version, url) {
+  return hasAvatar ? `/api/dashboard/creators/${id}/avatar?v=${version}` : url;
+}
+
 export function avatar(url, name, big = false) {
   const cls = big ? 'avatar avatar-lg' : 'avatar';
   if (url) {

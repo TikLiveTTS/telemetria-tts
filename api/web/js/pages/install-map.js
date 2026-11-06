@@ -1,5 +1,5 @@
-import { api } from '../api.js';
-import { el, num, skeleton, countryName } from '../format.js';
+import { api, qs } from '../api.js';
+import { el, num, skeleton, countryName, toast } from '../format.js';
 import { showInstall } from './geo.js';
 
 // Mapa coroplético: cada pais se colorea segun cuantas instalaciones ha
@@ -40,22 +40,22 @@ const rangeLabel = (i) => (i === BREAKS.length - 1
 
 let map = null;
 let renderId = 0;
+// Periodo elegido: se conserva al volver a la pagina.
+let periodDays = 0;
+let periodBy = 'first';
+const PERIODS = [[0, 'Toda la historia'], [7, '7 dias'], [30, '30 dias'], [90, '3 meses'], [180, '6 meses'], [365, '1 ano']];
+const BYS = [['first', 'Instalaron en el periodo'], ['last', 'Activas en el periodo']];
 
 export function destroyInstallMap() {
   if (map) { map.remove(); map = null; }
 }
 
-export async function installMapPage(view) {
-  const myId = ++renderId;
-  view.append(skeleton(3));
+// 'match' de MapLibre exige al menos una etiqueta: sin datos se devuelve 0.
+const matchBy = (input, pairs) => (pairs.length ? ['match', input, ...pairs.flat(), 0] : 0);
 
-  const [rows, installPoints] = await Promise.all([
-    api.get('/api/dashboard/geo/countries?limit=250'),
-    api.get('/api/dashboard/geo/installs'),
-  ]);
-  if (myId !== renderId) return;
-
-  // Un codigo por pais: MapLibre rechaza etiquetas repetidas en un 'match'.
+// Datos del mapa listos para pintar. Un codigo por pais: MapLibre rechaza
+// etiquetas repetidas en un 'match'.
+function build(rows, installPoints) {
   const merged = new Map();
   for (const r of rows) {
     if (!r.country_code) continue;
@@ -64,7 +64,48 @@ export async function installMapPage(view) {
     merged.set(code, prev ? { ...prev, installs: prev.installs + r.installs } : { ...r, country_code: code });
   }
   const counts = [...merged.values()];
-  const total = counts.reduce((acc, r) => acc + r.installs, 0);
+  const pairs = counts.map((r) => [r.country_code, r.installs]);
+  return {
+    counts,
+    total: counts.reduce((acc, r) => acc + r.installs, 0),
+    byCode: new Map(counts.map((r) => [r.country_code, r])),
+    installs: matchBy(ISO, pairs),
+    // Cada punto toma el color de su pais, con la misma escala que el relleno.
+    pointInstalls: matchBy(['upcase', ['get', 'country_code']], pairs),
+    pointsGeoJson: {
+      type: 'FeatureCollection',
+      features: installPoints.map((p) => ({
+        type: 'Feature',
+        properties: { machine_id: p.machine_id, country_code: p.country_code || '', city: p.city || '', country: countryName(p.country_code, p.country) },
+        geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
+      })),
+    },
+  };
+}
+
+const fetchData = () => {
+  const period = { days: periodDays || null, by: periodDays ? periodBy : null };
+  return Promise.all([
+    api.get(`/api/dashboard/geo/countries${qs({ limit: 250, ...period })}`),
+    api.get(`/api/dashboard/geo/installs${qs(period)}`),
+  ]);
+};
+
+const subtitle = (d) => {
+  const what = !periodDays ? 'de toda la historia'
+    : periodBy === 'first' ? `instaladas en los ultimos ${periodDays} dias`
+      : `activas en los ultimos ${periodDays} dias`;
+  return `Instalaciones ${what} por pais: ${num(d.total)} en ${num(d.counts.length)} paises. Cuanto mas intenso, mas usuarios.`;
+};
+
+export async function installMapPage(view) {
+  const myId = ++renderId;
+  view.append(skeleton(3));
+
+  const [rows, installPoints] = await fetchData();
+  if (myId !== renderId) return;
+
+  let data = build(rows, installPoints);
   let colors = gradient(Object.values(PALETTES)[0], BREAKS.length);
 
   const container = el('div', { style: 'height:520px;border-radius:var(--r-2, 8px);overflow:hidden' });
@@ -72,16 +113,44 @@ export async function installMapPage(view) {
   const paintLegend = () => swatches.forEach((sw, i) => { sw.style.background = colors[i]; });
   paintLegend();
 
+  // Aplica `data` y `colors` al mapa ya cargado, sin recrearlo (se conserva el zoom).
+  const repaint = () => {
+    if (!map || !map.getLayer('countries-fill')) return;
+    map.setPaintProperty('countries-fill', 'fill-color', fillColor(data.installs, colors));
+    map.setPaintProperty('installs-points', 'circle-color', fillColor(data.pointInstalls, colors));
+  };
+
   const paletteSel = el('select', { class: 'field', 'aria-label': 'Colores del mapa', style: 'margin-left:auto' },
     ...Object.keys(PALETTES).map((name) => el('option', { value: name }, name)));
   paletteSel.addEventListener('change', () => {
     colors = gradient(PALETTES[paletteSel.value], BREAKS.length);
     paintLegend();
-    if (map && map.getLayer('countries-fill')) {
-      map.setPaintProperty('countries-fill', 'fill-color', fillColor(installs, colors));
-      map.setPaintProperty('installs-points', 'circle-color', fillColor(pointInstalls, colors));
-    }
+    repaint();
   });
+
+  const subEl = el('div', { class: 'sub', text: subtitle(data) });
+
+  const reload = async () => {
+    try {
+      const [r, pts] = await fetchData();
+      if (myId !== renderId) return;
+      data = build(r, pts);
+      subEl.textContent = subtitle(data);
+      if (map && map.getSource('installs')) map.getSource('installs').setData(data.pointsGeoJson);
+      repaint();
+    } catch (err) {
+      toast(err.message, true);
+    }
+  };
+
+  // "Instalaron / Activas" solo tiene sentido con un periodo elegido.
+  const byWrap = el('span');
+  const pick = (label, options, get, set) => {
+    const sel = el('select', { class: 'field', 'aria-label': label },
+      ...options.map(([v, text]) => el('option', { value: v, selected: String(v) === String(get()) }, text)));
+    sel.addEventListener('change', () => { set(sel.value); byWrap.hidden = !periodDays; reload(); });
+    return sel;
+  };
 
   const toggle = (text, layers) => {
     const box = el('input', { type: 'checkbox', checked: true });
@@ -89,6 +158,10 @@ export async function installMapPage(view) {
       map.setLayoutProperty(id, 'visibility', box.checked ? 'visible' : 'none')));
     return el('label', { class: 'kpi-sub', style: 'margin:0;display:flex;align-items:center;gap:4px' }, box, text);
   };
+
+  byWrap.append(pick('Criterio del periodo', BYS, () => periodBy, (v) => { periodBy = v; }));
+  byWrap.hidden = !periodDays;
+  const periodSel = pick('Periodo', PERIODS, () => periodDays, (v) => { periodDays = Number(v); });
 
   const legend = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-top:var(--s-3);flex-wrap:wrap' },
     el('span', { class: 'kpi-sub', style: 'margin:0', text: 'Instalaciones:' }),
@@ -101,8 +174,8 @@ export async function installMapPage(view) {
 
   view.replaceChildren(
     el('div', { class: 'page-head' },
-      el('div', {}, el('h2', { text: 'Mapa de instalaciones' }),
-        el('div', { class: 'sub', text: `Instalaciones de toda la historia por pais: ${num(total)} en ${num(counts.length)} paises. Cuanto mas intenso, mas usuarios.` }))
+      el('div', {}, el('h2', { text: 'Mapa de instalaciones' }), subEl),
+      el('div', { class: 'filters', style: 'margin:0' }, periodSel, byWrap)
     ),
     el('div', { class: 'card' }, container, legend),
   );
@@ -115,19 +188,6 @@ export async function installMapPage(view) {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
   map.addControl(new maplibregl.FullscreenControl(), 'top-left');
 
-  const installs = ['match', ISO, ...counts.flatMap((r) => [r.country_code.toUpperCase(), r.installs]), 0];
-  const byCode = new Map(counts.map((r) => [r.country_code.toUpperCase(), r]));
-  // Cada punto toma el color de su pais, con la misma escala que el relleno.
-  const pointInstalls = ['match', ['upcase', ['get', 'country_code']], ...counts.flatMap((r) => [r.country_code, r.installs]), 0];
-  const pointsGeoJson = {
-    type: 'FeatureCollection',
-    features: installPoints.map((p) => ({
-      type: 'Feature',
-      properties: { machine_id: p.machine_id, country_code: p.country_code || '', city: p.city || '', country: countryName(p.country_code, p.country) },
-      geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
-    })),
-  };
-
   map.on('load', () => {
     // Debajo de las etiquetas del mapa base, para que los nombres sigan legibles.
     const firstLabel = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
@@ -137,7 +197,7 @@ export async function installMapPage(view) {
       type: 'fill',
       source: 'countries',
       paint: {
-        'fill-color': fillColor(installs, colors),
+        'fill-color': fillColor(data.installs, colors),
         'fill-opacity': 0.85,
       },
     }, firstLabel);
@@ -146,11 +206,11 @@ export async function installMapPage(view) {
       paint: { 'line-color': '#ffffff', 'line-width': 0.5 },
     }, firstLabel);
 
-    map.addSource('installs', { type: 'geojson', data: pointsGeoJson });
+    map.addSource('installs', { type: 'geojson', data: data.pointsGeoJson });
     map.addLayer({
       id: 'installs-points', type: 'circle', source: 'installs',
       paint: {
-        'circle-color': fillColor(pointInstalls, colors),
+        'circle-color': fillColor(data.pointInstalls, colors),
         'circle-radius': 5,
         'circle-stroke-width': 1.5,
         'circle-stroke-color': '#ffffff',
@@ -173,7 +233,7 @@ export async function installMapPage(view) {
       if (map.queryRenderedFeatures(e.point, { layers: ['installs-points'] }).length) return;
       const p = e.features[0].properties;
       const code = p.ISO_A2_EH || p.ISO_A2;
-      const r = byCode.get(code);
+      const r = data.byCode.get(code);
       map.getCanvas().style.cursor = 'pointer';
       popup.setLngLat(e.lngLat)
         .setDOMContent(el('div', { style: 'color:#111;font-size:12px' },

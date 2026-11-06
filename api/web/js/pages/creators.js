@@ -1,5 +1,5 @@
 import { api, qs } from '../api.js';
-import { el, clear, num, compact, minutes, date, relative, avatar, platformPill, toast, skeleton } from '../format.js';
+import { el, clear, num, compact, minutes, date, relative, avatar, creatorPhoto, platformPill, toast, skeleton } from '../format.js';
 import { lineChart, COLORS, destroyCharts } from '../charts.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 import { openModal, closeModal } from '../modal.js';
@@ -27,8 +27,7 @@ const SORT_LABEL = {
   name: 'Nombre A-Z',
 };
 
-// Foto guardada en el servidor si existe: la URL del CDN de TikTok caduca y se ve rota.
-const photo = (c) => (c.has_avatar ? `/api/dashboard/creators/${c.id}/avatar?v=${c.avatar_v}` : c.avatar_url);
+const photo = (c) => creatorPhoto(c.id, c.has_avatar, c.avatar_v, c.avatar_url);
 
 // Recarga de todas las fotos: arranca el trabajo y sigue su progreso hasta el final.
 let photosBtn = null;

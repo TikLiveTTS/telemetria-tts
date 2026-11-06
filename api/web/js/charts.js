@@ -73,9 +73,10 @@ const base = {
 };
 
 // `stacked` apila las series (area apilada); `max` fija el tope del eje Y.
-export function lineChart(canvas, labels, datasets, { stacked = false, max } = {}) {
+export function lineChart(canvas, labels, datasets, { stacked = false, max, plugins = [] } = {}) {
   return build(canvas, {
     type: 'line',
+    plugins, // en Chart.js 4 config.plugins es solo lectura: se pasan al crear
     data: {
       labels,
       datasets: datasets.map((d, i) => ({

@@ -1,5 +1,5 @@
 import { api, qs } from '../api.js';
-import { el, clear, num, minutes, date, relative, avatar, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
+import { el, clear, num, minutes, date, relative, avatar, creatorPhoto, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
 const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '', live: '', sort: 'status', dir: 'desc' }; // en live primero, luego app abierta y el resto
@@ -161,7 +161,7 @@ function creatorCell(s) {
     : el('span', { text: username });
 
   return el('td', {}, el('div', { style: 'display:flex;gap:8px;align-items:center' },
-    avatar(s.creator_avatar_url, s.creator_username), identity
+    avatar(creatorPhoto(s.creator_id, s.creator_has_avatar, s.creator_avatar_v, s.creator_avatar_url), s.creator_username), identity
   ));
 }
 

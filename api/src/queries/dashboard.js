@@ -124,7 +124,16 @@ async function retention() {
   return rows;
 }
 
-async function countries(limit = 10) {
+// Filtro de tiempo opcional para los mapas: `days` > 0 acota por fecha de
+// instalacion (by = 'first') o por ultima vez vista (by = 'last').
+function periodClause({ days, by } = {}, params) {
+  if (!days) return '';
+  params.push(days);
+  return ` AND ${by === 'last' ? 'last_seen_at' : 'first_seen_at'} > NOW() - make_interval(days => $${params.length}::int)`;
+}
+
+async function countries(limit = 10, period = {}) {
+  const params = [limit];
   const { rows } = await query(
     `SELECT MAX(country) AS country, country_code,
             COUNT(*)::int AS installs,
@@ -132,11 +141,11 @@ async function countries(limit = 10) {
             SUM(total_minutes)::int AS minutes
        FROM installs
       WHERE ${REAL_INSTALL}
-        AND country IS NOT NULL
+        AND country IS NOT NULL${periodClause(period, params)}
       GROUP BY country_code
       ORDER BY installs DESC
       LIMIT $1`,
-    [limit]
+    params
   );
   return rows;
 }
@@ -164,11 +173,13 @@ async function liveMap() {
 
 // Una instalacion = un punto, en la ultima ubicacion conocida (la misma que
 // usan los puntos en vivo). Para el mapa de instalaciones.
-async function installPoints() {
+async function installPoints(period = {}) {
+  const params = [];
   const { rows } = await query(
     `SELECT machine_id, lat, lon, city, country, country_code
        FROM installs
-      WHERE ${REAL_INSTALL} AND lat IS NOT NULL AND lon IS NOT NULL`
+      WHERE ${REAL_INSTALL} AND lat IS NOT NULL AND lon IS NOT NULL${periodClause(period, params)}`,
+    params
   );
   return rows;
 }
@@ -292,7 +303,8 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             s.country, s.country_code, s.city, s.platforms_used,
             s.started_at, s.ended_at, s.last_heartbeat_at,
             s.session_duration_minutes, s.first_seen, s.session_count,
-            c.username AS creator_username, c.avatar_url AS creator_avatar_url,
+            c.id AS creator_id, c.username AS creator_username, c.avatar_url AS creator_avatar_url,
+            c.has_avatar AS creator_has_avatar, c.avatar_v AS creator_avatar_v,
             c.channel_url AS creator_channel_url,
             ${APP_OPEN} AS app_open,
             ${CONNECTED} AS connected,
@@ -300,10 +312,12 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
        FROM picked s
        -- Una sesion no guarda su canal: se muestra el canal mas reciente del usuario.
        LEFT JOIN LATERAL (
-         SELECT username, avatar_url, channel_url
-           FROM creators
-          WHERE user_id = s.user_id
-          ORDER BY last_seen_at DESC, id DESC
+         SELECT cr.id, cr.username, cr.avatar_url, cr.channel_url,
+                (av.file IS NOT NULL) AS has_avatar, EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v
+           FROM creators cr
+           LEFT JOIN creator_avatars av ON av.creator_id = cr.id
+          WHERE cr.user_id = s.user_id
+          ORDER BY cr.last_seen_at DESC, cr.id DESC
           LIMIT 1
        ) c ON TRUE
       ${liveClause}
@@ -363,10 +377,12 @@ async function installProfile(machineId) {
 
   const [{ rows: creators }, { rows: recent }, { rows: platforms }, { rows: features }] = await Promise.all([
     query(
-      `SELECT id, platform, username, display_name, channel_url, avatar_url, follower_count
-         FROM creators
-        WHERE machine_id = $1 OR ($2::text IS NOT NULL AND user_id = $2)
-        ORDER BY follower_count DESC NULLS LAST`,
+      `SELECT c.id, c.platform, c.username, c.display_name, c.channel_url, c.avatar_url, c.follower_count,
+              (av.file IS NOT NULL) AS has_avatar, EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v
+         FROM creators c
+         LEFT JOIN creator_avatars av ON av.creator_id = c.id
+        WHERE c.machine_id = $1 OR ($2::text IS NOT NULL AND c.user_id = $2)
+        ORDER BY c.follower_count DESC NULLS LAST`,
       [machineId, install.user_id]
     ),
     query(

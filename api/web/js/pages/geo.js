@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { el, num, compact, minutes, date, relative, skeleton, countryName, avatar, platformPill, prettyEvent, CONNECTOR_LABELS } from '../format.js';
+import { el, num, compact, minutes, date, relative, skeleton, countryName, avatar, creatorPhoto, platformPill, prettyEvent, CONNECTOR_LABELS } from '../format.js';
 import { barChart, updateChart } from '../charts.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 import { openModal, closeModal } from '../modal.js';
@@ -115,7 +115,7 @@ export async function showInstall(machineId) {
 
   openDrawer(
     el('div', { class: 'drawer-head' },
-      avatar(main && main.avatar_url, name, true),
+      avatar(main && creatorPhoto(main.id, main.has_avatar, main.avatar_v, main.avatar_url), name, true),
       el('div', {},
         el('h3', { text: name }),
         el('div', { class: 'dim', style: 'font-size:var(--fs-sm)', text: location || 'Ubicacion desconocida' })

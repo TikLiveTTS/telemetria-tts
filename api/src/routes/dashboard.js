@@ -78,8 +78,13 @@ router.get('/habits', (req, res) => {
 });
 router.get('/activation', wrap((req) => memo('activation', insights.activation, periodDays(req))));
 router.get('/features',   wrap((req) => memo('features', q.features, periodDays(req))));
-router.get('/geo/installs',  wrap(() => q.installPoints()));
-router.get('/geo/countries', wrap((req) => q.countries(Math.min(250, parseInt(req.query.limit, 10) || 10))));
+// Filtro de tiempo de los mapas: ?days=N (0 = toda la historia) y ?by=first|last.
+function mapPeriod(req) {
+  const n = parseInt(req.query.days, 10);
+  return { days: Number.isFinite(n) ? Math.min(3650, Math.max(0, n)) : 0, by: req.query.by === 'last' ? 'last' : 'first' };
+}
+router.get('/geo/installs',  wrap((req) => q.installPoints(mapPeriod(req))));
+router.get('/geo/countries', wrap((req) => q.countries(Math.min(250, parseInt(req.query.limit, 10) || 10), mapPeriod(req))));
 router.get('/geo/live',      wrap(() => q.liveMap()));
 router.get('/geo/history',   wrap((req) => q.geoHistory(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 2)))));
 router.get('/blocked-words', wrap((req) => blockedWords.ranking(blockedWordsOptions(req))));
