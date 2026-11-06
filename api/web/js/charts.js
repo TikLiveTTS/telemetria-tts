@@ -116,6 +116,9 @@ export function barChart(canvas, labels, data, { horizontal = false, color = COL
     options: {
       ...base,
       indexAxis: horizontal ? 'y' : 'x',
+      // En barras horizontales las filas se apilan en vertical: sin axis 'y' el
+      // tooltip elige la barra por la X del cursor y sale en otra fila.
+      interaction: { ...base.interaction, axis: horizontal ? 'y' : 'x' },
       plugins: { ...base.plugins, legend: { display: false } },
       scales: { x: axis({ beginAtZero: true }), y: axis({ beginAtZero: true, precision: 0 }) },
     },
