@@ -2,6 +2,9 @@
 
 const { query } = require('./db');
 const config = require('./config');
+const { refresh } = require('./memo');
+const insights = require('./queries/insights');
+const dashboard = require('./queries/dashboard');
 const { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
 
 // Tareas periodicas dentro del propio proceso: no hace falta cron ni un
@@ -57,6 +60,16 @@ async function purgeOldBlockedWords() {
         AND NOT EXISTS (SELECT 1 FROM blocked_word_weekly k WHERE k.word_norm = w.word_norm)`
   );
   return rowCount;
+}
+
+// Precalcula las consultas pesadas del panel para los periodos habituales.
+async function warm() {
+  for (const days of [30, 7, 90, 365]) {
+    for (const [name, fn] of [['habits', insights.habits], ['activation', insights.activation],
+      ['rollout', insights.versionRollout], ['features', dashboard.features]]) {
+      try { await refresh(name, fn, days); } catch (err) { console.error(`[jobs] warm ${name}:${days} fallo:`, err.message); }
+    }
+  }
 }
 
 async function sweepAbandonedSessions() {
@@ -141,6 +154,7 @@ function start() {
     } catch (err) {
       console.error('[jobs] purga de palabras bloqueadas fallo:', err.message);
     }
+    await warm();
     try {
       const closed = await sweepAbandonedSessions();
       if (closed > 0) console.log(`[jobs] sesiones cerradas: ${closed}`);
@@ -155,6 +169,7 @@ function start() {
   rebuildBlockedWordWeekly().catch((err) => console.error('[jobs] palabras bloqueadas inicial fallo:', err.message));
   sweepAbandonedSessions().catch((err) => console.error('[jobs] cierre inicial de sesiones fallo:', err.message));
 
+  warm();
   daily();
 
   const timer = setInterval(tick, 60 * 60 * 1000);
@@ -164,4 +179,4 @@ function start() {
   return timer;
 }
 
-module.exports = { start, daily, autoPublishCreators, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };
+module.exports = { start, warm, daily, autoPublishCreators, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };

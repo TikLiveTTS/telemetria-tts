@@ -7,6 +7,7 @@ const { runRollup, purgeOldEvents } = require('../jobs');
 const { ingestStatus } = require('../ingest');
 const blockedWords = require('../queries/blocked-words');
 const insights = require('../queries/insights');
+const { memo } = require('../memo');
 
 const router = express.Router();
 
@@ -49,7 +50,7 @@ router.get('/daily',      wrap((req) => q.daily(periodDays(req))));
 router.get('/retention',  wrap(() => q.retention()));
 router.get('/platforms',  wrap((req) => q.platformMix(periodDays(req))));
 router.get('/versions',   wrap((req) => q.versions(periodDays(req))));
-router.get('/versions/rollout', wrap((req) => insights.versionRollout(periodDays(req))));
+router.get('/versions/rollout', wrap((req) => memo('rollout', insights.versionRollout, periodDays(req))));
 router.get('/versions/catalog', wrap(() => insights.versionCatalog()));
 // Ocultar o volver a mostrar una version. Solo marca; no borra datos.
 router.post('/versions/hidden', async (req, res) => {
@@ -64,12 +65,13 @@ router.post('/versions/hidden', async (req, res) => {
     res.status(500).json({ error: 'Error interno' });
   }
 });
-router.get('/habits',     wrap((req) => insights.habits(periodDays(req))));
-router.get('/activation', wrap((req) => insights.activation(periodDays(req))));
-router.get('/features',   wrap((req) => q.features(periodDays(req))));
+router.get('/habits',     wrap((req) => memo('habits', insights.habits, periodDays(req))));
+router.get('/activation', wrap((req) => memo('activation', insights.activation, periodDays(req))));
+router.get('/features',   wrap((req) => memo('features', q.features, periodDays(req))));
+router.get('/geo/installs',  wrap(() => q.installPoints()));
 router.get('/geo/countries', wrap((req) => q.countries(Math.min(250, parseInt(req.query.limit, 10) || 10))));
 router.get('/geo/live',      wrap(() => q.liveMap()));
-router.get('/geo/history',   wrap(() => q.geoHistory()));
+router.get('/geo/history',   wrap((req) => q.geoHistory(Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 2)))));
 router.get('/blocked-words', wrap((req) => blockedWords.ranking(blockedWordsOptions(req))));
 router.get('/blocked-words/summary', wrap((req) => blockedWords.summary(blockedWordsOptions(req))));
 

@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { el, num, skeleton, countryName } from '../format.js';
+import { showInstall } from './geo.js';
 
 // Mapa coroplético: cada pais se colorea segun cuantas instalaciones ha
 // tenido en toda la historia. Poligonos de Natural Earth 1:110m (v5.1.2)
@@ -48,10 +49,21 @@ export async function installMapPage(view) {
   const myId = ++renderId;
   view.append(skeleton(3));
 
-  const rows = await api.get('/api/dashboard/geo/countries?limit=250');
+  const [rows, installPoints] = await Promise.all([
+    api.get('/api/dashboard/geo/countries?limit=250'),
+    api.get('/api/dashboard/geo/installs'),
+  ]);
   if (myId !== renderId) return;
 
-  const counts = rows.filter((r) => r.country_code);
+  // Un codigo por pais: MapLibre rechaza etiquetas repetidas en un 'match'.
+  const merged = new Map();
+  for (const r of rows) {
+    if (!r.country_code) continue;
+    const code = r.country_code.toUpperCase();
+    const prev = merged.get(code);
+    merged.set(code, prev ? { ...prev, installs: prev.installs + r.installs } : { ...r, country_code: code });
+  }
+  const counts = [...merged.values()];
   const total = counts.reduce((acc, r) => acc + r.installs, 0);
   let colors = gradient(Object.values(PALETTES)[0], BREAKS.length);
 
@@ -65,13 +77,25 @@ export async function installMapPage(view) {
   paletteSel.addEventListener('change', () => {
     colors = gradient(PALETTES[paletteSel.value], BREAKS.length);
     paintLegend();
-    if (map && map.getLayer('countries-fill')) map.setPaintProperty('countries-fill', 'fill-color', fillColor(installs, colors));
+    if (map && map.getLayer('countries-fill')) {
+      map.setPaintProperty('countries-fill', 'fill-color', fillColor(installs, colors));
+      map.setPaintProperty('installs-points', 'circle-color', fillColor(pointInstalls, colors));
+    }
   });
+
+  const toggle = (text, layers) => {
+    const box = el('input', { type: 'checkbox', checked: true });
+    box.addEventListener('change', () => layers.forEach((id) => map && map.getLayer(id) &&
+      map.setLayoutProperty(id, 'visibility', box.checked ? 'visible' : 'none')));
+    return el('label', { class: 'kpi-sub', style: 'margin:0;display:flex;align-items:center;gap:4px' }, box, text);
+  };
 
   const legend = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-top:var(--s-3);flex-wrap:wrap' },
     el('span', { class: 'kpi-sub', style: 'margin:0', text: 'Instalaciones:' }),
     ...BREAKS.map((_, i) => el('span', { class: 'kpi-sub', style: 'margin:0;display:flex;align-items:center;gap:4px' },
       swatches[i], rangeLabel(i))),
+    toggle('Paises', ['countries-fill', 'countries-line']),
+    toggle('Usuarios', ['installs-points']),
     paletteSel,
   );
 
@@ -93,6 +117,16 @@ export async function installMapPage(view) {
 
   const installs = ['match', ISO, ...counts.flatMap((r) => [r.country_code.toUpperCase(), r.installs]), 0];
   const byCode = new Map(counts.map((r) => [r.country_code.toUpperCase(), r]));
+  // Cada punto toma el color de su pais, con la misma escala que el relleno.
+  const pointInstalls = ['match', ['upcase', ['get', 'country_code']], ...counts.flatMap((r) => [r.country_code, r.installs]), 0];
+  const pointsGeoJson = {
+    type: 'FeatureCollection',
+    features: installPoints.map((p) => ({
+      type: 'Feature',
+      properties: { machine_id: p.machine_id, country_code: p.country_code || '', city: p.city || '', country: countryName(p.country_code, p.country) },
+      geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
+    })),
+  };
 
   map.on('load', () => {
     // Debajo de las etiquetas del mapa base, para que los nombres sigan legibles.
@@ -112,8 +146,31 @@ export async function installMapPage(view) {
       paint: { 'line-color': '#ffffff', 'line-width': 0.5 },
     }, firstLabel);
 
+    map.addSource('installs', { type: 'geojson', data: pointsGeoJson });
+    map.addLayer({
+      id: 'installs-points', type: 'circle', source: 'installs',
+      paint: {
+        'circle-color': fillColor(pointInstalls, colors),
+        'circle-radius': 5,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#ffffff',
+      },
+    });
+
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+    map.on('mouseenter', 'installs-points', (e) => {
+      map.getCanvas().style.cursor = 'pointer';
+      const p = e.features[0].properties;
+      popup.setLngLat(e.features[0].geometry.coordinates)
+        .setDOMContent(el('div', { style: 'color:#111;font-size:12px' },
+          el('strong', { text: [p.city, p.country].filter(Boolean).join(', ') || 'Ubicacion desconocida' }),
+          el('div', { text: '1 instalacion' })))
+        .addTo(map);
+    });
+    map.on('mouseleave', 'installs-points', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
+    map.on('click', 'installs-points', (e) => { popup.remove(); showInstall(e.features[0].properties.machine_id); });
     map.on('mousemove', 'countries-fill', (e) => {
+      if (map.queryRenderedFeatures(e.point, { layers: ['installs-points'] }).length) return;
       const p = e.features[0].properties;
       const code = p.ISO_A2_EH || p.ISO_A2;
       const r = byCode.get(code);

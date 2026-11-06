@@ -124,14 +124,14 @@ async function retention() {
 
 async function countries(limit = 10) {
   const { rows } = await query(
-    `SELECT country, country_code,
+    `SELECT MAX(country) AS country, country_code,
             COUNT(*)::int AS installs,
             SUM(total_sessions)::int AS sessions,
             SUM(total_minutes)::int AS minutes
        FROM installs
       WHERE ${REAL_INSTALL}
         AND country IS NOT NULL
-      GROUP BY 1, 2
+      GROUP BY country_code
       ORDER BY installs DESC
       LIMIT $1`,
     [limit]
@@ -160,17 +160,31 @@ async function liveMap() {
   return { points, count: points.length, without_geo: withoutGeo[0].count };
 }
 
-// Historial del mapa: sesiones con ubicacion que estuvieron abiertas en las
-// ultimas 48 h. Fin = cierre o ultimo latido; el cliente decide que puntos
-// pintar en cada instante. Sale de `sessions`, no hace falta tabla aparte.
-async function geoHistory() {
+// Una instalacion = un punto, en la ultima ubicacion conocida (la misma que
+// usan los puntos en vivo). Para el mapa de instalaciones.
+async function installPoints() {
+  const { rows } = await query(
+    `SELECT machine_id, lat, lon, city, country, country_code
+       FROM installs
+      WHERE ${REAL_INSTALL} AND lat IS NOT NULL AND lon IS NOT NULL`
+  );
+  return rows;
+}
+
+// Historial del mapa: sesiones con ubicacion que estuvieron abiertas en los
+// ultimos `days` dias. Fin = cierre o ultimo latido; el cliente decide que
+// puntos pintar en cada instante. Sale de `sessions`, no hace falta tabla aparte.
+// ponytail: tope de 100k sesiones (~10 MB); agregar en el servidor si se llega.
+async function geoHistory(days = 2) {
   const { rows } = await query(
     `SELECT s.machine_id, s.lat, s.lon, s.city, s.country, s.country_code,
             s.started_at AS start, COALESCE(s.ended_at, s.received_at) AS end
        FROM sessions s
-      WHERE COALESCE(s.ended_at, s.received_at) > NOW() - INTERVAL '48 hours'
+      WHERE COALESCE(s.ended_at, s.received_at) > NOW() - make_interval(days => $1::int)
         AND s.lat IS NOT NULL AND s.lon IS NOT NULL
-      ORDER BY s.started_at`
+      ORDER BY s.started_at DESC
+      LIMIT 100000`,
+    [days]
   );
   return rows;
 }
@@ -396,7 +410,7 @@ async function systemStatus() {
 }
 
 module.exports = {
-  summary, daily, retention, countries, liveMap, geoHistory, versions,
+  summary, daily, retention, countries, liveMap, geoHistory, installPoints, versions,
   features, featureDetail, sessions, sessionEvents, installProfile,
   platformMix, systemStatus,
 };

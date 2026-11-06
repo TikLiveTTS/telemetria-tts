@@ -56,30 +56,12 @@ export function renderMap(container, points) {
     map.addSource('points', {
       type: 'geojson',
       data: pointsToGeoJson(pendingPoints || points),
-      cluster: true,
-      clusterMaxZoom: 9,
-      clusterRadius: 40,
-    });
-
-    map.addLayer({
-      id: 'clusters',
-      type: 'circle',
-      source: 'points',
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': '#fe2c55',
-        'circle-opacity': 0.75,
-        'circle-radius': ['step', ['get', 'point_count'], 14, 5, 20, 20, 28],
-        'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(254,44,85,.25)',
-      },
     });
 
     map.addLayer({
       id: 'point',
       type: 'circle',
       source: 'points',
-      filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-color': '#fe2c55',
         'circle-radius': 6,
@@ -88,26 +70,10 @@ export function renderMap(container, points) {
       },
     });
 
-    map.on('click', 'clusters', (e) => {
-      const feature = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0];
-      const clusterId = feature.properties.cluster_id;
-      map.getSource('points').getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (err) return;
-        map.easeTo({ center: feature.geometry.coordinates, zoom });
-      });
-    });
-
     const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
     const showPopup = (lngLat, html) => {
       popup.setLngLat(lngLat).setHTML(`<div style="font-size:12px;color:#111;line-height:1.4">${html}</div>`).addTo(map);
     };
-
-    map.on('mouseenter', 'clusters', (e) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const p = e.features[0].properties;
-      showPopup(e.features[0].geometry.coordinates, `<b>${p.point_count}</b> usuarios agrupados en esta zona del mapa (zoom para separarlos)`);
-    });
-    map.on('mouseleave', 'clusters', () => { map.getCanvas().style.cursor = ''; popup.remove(); });
 
     map.on('mouseenter', 'point', (e) => {
       map.getCanvas().style.cursor = 'pointer';
@@ -127,7 +93,7 @@ export function renderMap(container, points) {
 }
 
 // Ficha de la instalacion: perfil de creador, redes y su uso de la app.
-async function showInstall(machineId) {
+export async function showInstall(machineId) {
   openDrawer(skeleton(6));
   let p;
   try {
