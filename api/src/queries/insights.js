@@ -17,11 +17,11 @@ const DURATION = `COALESCE(session_duration_minutes,
   GREATEST(0, EXTRACT(EPOCH FROM (last_heartbeat_at - started_at)) / 60))`;
 const CLOSED = `(ended_at IS NOT NULL OR last_heartbeat_at < NOW() - INTERVAL '15 minutes')`;
 
-async function habits(days) {
-  // ponytail: ventana movil de 30 dias por cada dia del periodo, O(dias x actividad); precalcular en rollup si crece.
-  const weekly = days > 90;
-  const [durations, hours, stickiness, churn, heatmap] = await Promise.all([
-    query(
+// Cada grafico de Habitos se pide por separado (con su propio rango de dias),
+// asi que cada seccion es una consulta independiente.
+const HABIT_SECTIONS = {
+  async durations(days) {
+    const r = await query(
       `SELECT CASE WHEN d < 15 THEN '<15 min'
                    WHEN d < 60 THEN '15-60 min'
                    WHEN d < 180 THEN '1-3 h'
@@ -31,8 +31,16 @@ async function habits(days) {
                 WHERE ${CLOSED} AND started_at > NOW() - make_interval(days => $1::int)) s
         GROUP BY 1`,
       [days]
-    ),
-    query(
+    );
+    const order = ['<15 min', '15-60 min', '1-3 h', '>3 h'];
+    const byBucket = new Map(r.rows.map((x) => [x.bucket, x.sessions]));
+    return order.map((bucket) => ({ bucket, sessions: byBucket.get(bucket) || 0 }));
+  },
+
+  async hours(days) {
+    // ponytail: por encima de 90 dias se agrupa por semana; mensual si hiciera falta.
+    const weekly = days > 90;
+    const r = await query(
       `WITH d AS (
          SELECT generate_series(
            date_trunc($3, (NOW() AT TIME ZONE $2)::date - ($1::int - 1)),
@@ -49,8 +57,13 @@ async function habits(days) {
        SELECT to_char(d.day, 'YYYY-MM-DD') AS day, COALESCE(h.hours, 0) AS hours
          FROM d LEFT JOIN h USING (day) ORDER BY d.day`,
       [days, TZ, weekly ? 'week' : 'day']
-    ),
-    query(
+    );
+    return { unit: weekly ? 'week' : 'day', rows: r.rows };
+  },
+
+  async stickiness(days) {
+    // ponytail: ventana movil de 30 dias por cada dia del periodo, O(dias x actividad); precalcular en rollup si crece.
+    const r = await query(
       `WITH act AS (
          SELECT DISTINCT machine_id, (started_at AT TIME ZONE $2)::date AS day
            FROM sessions
@@ -67,11 +80,15 @@ async function habits(days) {
          LEFT JOIN act a ON a.day > d.day - 30 AND a.day <= d.day
         GROUP BY d.day ORDER BY d.day`,
       [days, TZ]
-    ),
-    // Perdido: su sesion fue seguida de >= CHURN_DAYS sin volver (o no volvio).
-    // Recuperado: volvio tras un hueco de >= CHURN_DAYS. Se cuenta en la
-    // semana de la ultima sesion y en la de la vuelta, respectivamente.
-    query(
+    );
+    return r.rows;
+  },
+
+  // Perdido: su sesion fue seguida de >= CHURN_DAYS sin volver (o no volvio).
+  // Recuperado: volvio tras un hueco de >= CHURN_DAYS. Se cuenta en la
+  // semana de la ultima sesion y en la de la vuelta, respectivamente.
+  async churn(days) {
+    const r = await query(
       `WITH s AS (
          SELECT machine_id, started_at,
                 LAG(started_at)  OVER w AS prev_at,
@@ -105,11 +122,15 @@ async function habits(days) {
          LEFT JOIN back b USING (week)
         ORDER BY w.week`,
       [days, TZ, CHURN_DAYS]
-    ),
-    // Usuarios con la app abierta en cada (dia de la semana, hora), en la hora
-    // local del usuario. Cada sesion cuenta en todas las horas que cubrio.
-    // ponytail: hora local aproximada por longitud (lon/15), sin horario de verano; usar zona IANA por pais si hace falta precision.
-    query(
+    );
+    return { days: CHURN_DAYS, rows: r.rows };
+  },
+
+  // Usuarios con la app abierta en cada (dia de la semana, hora), en la hora
+  // local del usuario. Cada sesion cuenta en todas las horas que cubrio.
+  // ponytail: hora local aproximada por longitud (lon/15), sin horario de verano; usar zona IANA por pais si hace falta precision.
+  async heatmap(days) {
+    const r = await query(
       `WITH s AS (
          SELECT machine_id,
                 CASE WHEN lon IS NULL THEN started_at AT TIME ZONE $2
@@ -126,20 +147,12 @@ async function habits(days) {
               COUNT(DISTINCT machine_id)::int AS users
          FROM h GROUP BY 1, 2`,
       [days, TZ]
-    ),
-  ]);
+    );
+    return r.rows;
+  },
+};
 
-  const order = ['<15 min', '15-60 min', '1-3 h', '>3 h'];
-  const byBucket = new Map(durations.rows.map((r) => [r.bucket, r.sessions]));
-
-  return {
-    durations: order.map((bucket) => ({ bucket, sessions: byBucket.get(bucket) || 0 })),
-    hours: { unit: weekly ? 'week' : 'day', rows: hours.rows },
-    stickiness: stickiness.rows,
-    churn: { days: CHURN_DAYS, rows: churn.rows },
-    heatmap: heatmap.rows,
-  };
-}
+const habitSection = (name, days) => HABIT_SECTIONS[name](days);
 
 async function activation(days) {
   const [firstUse, pareto] = await Promise.all([
@@ -258,4 +271,4 @@ async function setVersionHidden(version, hidden) {
   return { ok: true };
 }
 
-module.exports = { habits, activation, versionRollout, versionCatalog, setVersionHidden };
+module.exports = { HABIT_SECTIONS, habitSection, activation, versionRollout, versionCatalog, setVersionHidden };

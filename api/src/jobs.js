@@ -66,7 +66,8 @@ async function purgeOldBlockedWords() {
 // Precalcula las consultas pesadas del panel para los periodos habituales.
 async function warm() {
   for (const days of [30, 7, 90, 365]) {
-    for (const [name, fn] of [['habits', insights.habits], ['activation', insights.activation],
+    const habitSections = Object.keys(insights.HABIT_SECTIONS).map((sec) => [`habits:${sec}`, (d) => insights.habitSection(sec, d)]);
+    for (const [name, fn] of [...habitSections, ['activation', insights.activation],
       ['rollout', insights.versionRollout], ['features', dashboard.features], ['daily:day', (d) => dashboard.daily(d, 'day')]]) {
       try { await refresh(name, fn, days); } catch (err) { console.error(`[jobs] warm ${name}:${days} fallo:`, err.message); }
     }

@@ -5,6 +5,7 @@ const { pool } = require('../db');
 const blockedWords = require('../queries/blocked-words');
 const config = require('../config');
 const dashboard = require('../queries/dashboard');
+const insights = require('../queries/insights');
 const { memo } = require('../memo');
 const { csvCell, exportCell } = require('../export-cells');
 
@@ -82,6 +83,27 @@ router.get('/daily.csv', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="actividad-${unit === 'day' ? 'diaria' : unit === 'week' ? 'semanal' : 'mensual'}.csv"`);
     res.write('﻿fecha,sesiones,usuarios_unicos,instalaciones_nuevas\n');
     for (const r of rows) res.write([r.day, r.sessions, r.users, r.installs].map(csvCell).join(',') + '\n');
+    res.end();
+  } catch (err) {
+    console.error('[export]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
+
+// Un apartado de Habitos tal como se ve en pantalla: ?days=N. Mismos datos que el grafico.
+router.get('/habits-:section.csv', async (req, res) => {
+  const { section } = req.params;
+  if (!insights.HABIT_SECTIONS[section]) return res.status(404).json({ error: 'apartado desconocido' });
+  try {
+    const days = Math.min(3650, Math.max(1, parseInt(req.query.days, 10) || 30));
+    const data = await memo(`habits:${section}`, (d) => insights.habitSection(section, d), days);
+    const rows = Array.isArray(data) ? data : data.rows;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="habitos-${section}-${days}d.csv"`);
+    if (!rows.length) return res.end('');
+    const headers = Object.keys(rows[0]);
+    res.write('﻿' + headers.join(',') + '\n');
+    for (const r of rows) res.write(headers.map((h) => csvCell(r[h])).join(',') + '\n');
     res.end();
   } catch (err) {
     console.error('[export]', err.message);
