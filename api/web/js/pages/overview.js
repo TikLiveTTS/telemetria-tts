@@ -1,5 +1,5 @@
 import { api, state } from '../api.js';
-import { el, clear, num, minutes, skeleton, PLATFORM_LABELS } from '../format.js';
+import { el, clear, num, minutes, skeleton, toast, PLATFORM_LABELS } from '../format.js';
 import { lineChart, barChart, updateChart, COLORS } from '../charts.js';
 
 // Referencias de modulo: se llenan en buildLayout() (parte de overviewPage)
@@ -13,6 +13,15 @@ let chartDaily = null;
 let chartRet = null;
 let chartPlat = null;
 let renderId = 0;
+
+// Rango y agrupacion de la grafica de actividad (se conservan entre refrescos).
+const DAILY_RANGES = [[7, '7 dias'], [30, '30 dias'], [90, '3 meses'], [180, '6 meses'], [365, '1 ano']];
+const DAILY_UNITS = [['day', 'Por dia'], ['week', 'Por semana'], ['month', 'Por mes']];
+let dailyDays = 365;
+let dailyUnit = 'day';
+let csvLink = null;
+
+const dailyQuery = () => `days=${dailyDays}&unit=${dailyUnit}`;
 
 function kpi(label, cls) {
   const valueEl = el('div', { class: `kpi-value ${cls || ''}` });
@@ -43,7 +52,26 @@ function delta(now, prev) {
 
 // Arma el DOM una sola vez: 8 tarjetas KPI (vacias) + los 3 contenedores de
 // chart. Los valores/graficos se llenan despues via applyData().
+// Selector que cambia el rango/agrupacion y recarga solo esta grafica.
+function pick(label, options, get, set) {
+  const sel = el('select', { class: 'field', 'aria-label': label },
+    ...options.map(([v, text]) => el('option', { value: v, selected: String(v) === String(get()) }, text)));
+  sel.addEventListener('change', async () => {
+    set(sel.value);
+    csvLink.href = `/api/export/daily.csv?${dailyQuery()}`;
+    const myId = renderId;
+    try {
+      const daily = await api.get(`/api/dashboard/daily?${dailyQuery()}`);
+      if (myId === renderId) applyDaily(daily);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+  return sel;
+}
+
 function buildLayout(view) {
+  csvLink = el('a', { class: 'btn btn-sm', href: `/api/export/daily.csv?${dailyQuery()}`, title: 'Descargar esta serie en CSV' }, '⬇ CSV');
   refs.installs = kpi('Instalaciones', 'accent');
   refs.activeNow = kpi('Apps abiertas', 'cyan');
   refs.connectedNow = kpi('Conectado a plataforma', 'cyan');
@@ -67,9 +95,12 @@ function buildLayout(view) {
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
-      el('div', { class: 'section-title', style: 'display:flex;align-items:center;gap:var(--s-3)' },
-        'Actividad diaria · ultimos 365 dias',
-        el('a', { class: 'btn btn-sm', style: 'margin-left:auto', href: '/api/export/daily.csv', title: 'Descargar la serie diaria en CSV' }, '⬇ CSV')),
+      el('div', { class: 'section-title', style: 'display:flex;align-items:center;gap:var(--s-3);flex-wrap:wrap' },
+        'Actividad',
+        el('span', { style: 'margin-left:auto;display:flex;gap:var(--s-2);flex-wrap:wrap' },
+          pick('Rango de la grafica', DAILY_RANGES, () => dailyDays, (v) => { dailyDays = Number(v); }),
+          pick('Agrupacion', DAILY_UNITS, () => dailyUnit, (v) => { dailyUnit = v; }),
+          csvLink)),
       dailyBox
     ),
 
@@ -84,6 +115,24 @@ function buildLayout(view) {
       )
     )
   );
+}
+
+// Grafica de actividad: el chart siempre existe.
+function applyDaily(daily) {
+  // Mes: AAAA-MM. Dia o semana: AA-MM-DD (el rango puede cruzar anos).
+  const dailyLabels = daily.map((d) => (dailyUnit === 'month' ? String(d.day).slice(0, 7) : String(d.day).slice(2, 10)));
+  const dailySeries = [
+    { label: 'Sesiones', data: daily.map((d) => d.sessions), color: COLORS.accent },
+    { label: 'Usuarios unicos', data: daily.map((d) => d.users), color: COLORS.accent2 },
+    { label: 'Instalaciones nuevas', data: daily.map((d) => d.installs), color: COLORS.ok },
+  ];
+  if (chartDaily) {
+    updateChart(chartDaily, dailyLabels, dailySeries.map((d) => d.data));
+  } else {
+    const canvas = el('canvas', { id: 'c-daily' });
+    dailyBox.replaceChildren(canvas);
+    chartDaily = lineChart(canvas, dailyLabels, dailySeries);
+  }
 }
 
 // Actualiza valores de KPI y los 3 charts con datos frescos, sin tocar el
@@ -115,20 +164,7 @@ function applyData(s, daily, retention, platforms) {
   refs.creators.valueEl.textContent = num(s.creators_total);
   clear(refs.creators.subEl).append(el('span', { class: 'dim', text: `${num(s.creators_public)} publicos` }));
 
-  // Actividad diaria: el chart siempre existe.
-  const dailyLabels = daily.map((d) => String(d.day).slice(2, 10)); // AA-MM-DD: 365 dias cruzan anos
-  const dailySeries = [
-    { label: 'Sesiones', data: daily.map((d) => d.sessions), color: COLORS.accent },
-    { label: 'Usuarios unicos', data: daily.map((d) => d.users), color: COLORS.accent2 },
-    { label: 'Instalaciones nuevas', data: daily.map((d) => d.installs), color: COLORS.ok },
-  ];
-  if (chartDaily) {
-    updateChart(chartDaily, dailyLabels, dailySeries.map((d) => d.data));
-  } else {
-    const canvas = el('canvas', { id: 'c-daily' });
-    dailyBox.replaceChildren(canvas);
-    chartDaily = lineChart(canvas, dailyLabels, dailySeries);
-  }
+  applyDaily(daily);
 
   // Retencion: puede estar vacia y pasar a tener datos entre refrescos (o al reves).
   if (retention.length) {
@@ -176,7 +212,7 @@ function applyData(s, daily, retention, platforms) {
 async function fetchAll() {
   return Promise.all([
     api.get(`/api/dashboard/summary?days=${state.days}`),
-    api.get(`/api/dashboard/daily?days=365`),
+    api.get(`/api/dashboard/daily?${dailyQuery()}`),
     api.get('/api/dashboard/retention'),
     api.get(`/api/dashboard/platforms?days=${state.days}`),
   ]);

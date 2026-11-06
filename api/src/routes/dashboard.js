@@ -34,6 +34,11 @@ function blockedWordsOptions(req) {
   };
 }
 
+// Agrupacion de la serie diaria; lista cerrada porque llega a SQL.
+function dailyUnit(req) {
+  return ['week', 'month'].includes(req.query.unit) ? req.query.unit : 'day';
+}
+
 function wrap(fn) {
   return async (req, res) => {
     try {
@@ -46,7 +51,7 @@ function wrap(fn) {
 }
 
 router.get('/summary',    wrap((req) => q.summary(periodDays(req))));
-router.get('/daily',      wrap((req) => memo('daily', q.daily, periodDays(req))));
+router.get('/daily',      wrap((req) => { const unit = dailyUnit(req); return memo(`daily:${unit}`, (d) => q.daily(d, unit), periodDays(req)); }));
 router.get('/retention',  wrap(() => q.retention()));
 router.get('/platforms',  wrap((req) => q.platformMix(periodDays(req))));
 router.get('/versions',   wrap((req) => q.versions(periodDays(req))));

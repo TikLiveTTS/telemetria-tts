@@ -50,17 +50,19 @@ async function summary(days) {
 // Serie diaria: sesiones, usuarios unicos e instalaciones nuevas.
 // generate_series rellena los dias sin datos, para que la linea no mienta
 // saltandose huecos.
-async function daily(days) {
+async function daily(days, unit = 'day') {
+  // unit se valida en la ruta; aqui solo llega day | week | month.
+  const step = `1 ${unit}`;
   const { rows } = await query(
     `WITH d AS (
        SELECT generate_series(
-         (NOW() AT TIME ZONE $2)::date - ($1::int - 1),
+         date_trunc($3, (NOW() AT TIME ZONE $2)::date - ($1::int - 1))::date,
          (NOW() AT TIME ZONE $2)::date,
-         '1 day'::interval
+         $4::interval
        )::date AS day
      ),
      s AS (
-       SELECT (started_at AT TIME ZONE $2)::date AS day,
+       SELECT date_trunc($3, (started_at AT TIME ZONE $2)::date)::date AS day,
               COUNT(*)::int AS sessions,
               COUNT(DISTINCT machine_id)::int AS users
          FROM sessions
@@ -68,7 +70,7 @@ async function daily(days) {
         GROUP BY 1
      ),
      n AS (
-       SELECT (first_seen_at AT TIME ZONE $2)::date AS day, COUNT(*)::int AS installs
+       SELECT date_trunc($3, (first_seen_at AT TIME ZONE $2)::date)::date AS day, COUNT(*)::int AS installs
          FROM installs
         WHERE ${REAL_INSTALL}
           AND first_seen_at > NOW() - make_interval(days => $1::int)
@@ -80,7 +82,7 @@ async function daily(days) {
             COALESCE(n.installs, 0) AS installs
        FROM d LEFT JOIN s USING (day) LEFT JOIN n USING (day)
       ORDER BY d.day`,
-    [days, TZ]
+    [days, TZ, unit, step]
   );
   return rows;
 }

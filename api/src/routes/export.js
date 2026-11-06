@@ -72,12 +72,14 @@ async function blockedWordsExport(req, res, separator, extension) {
 router.get('/blocked-words.tsv', (req, res) => blockedWordsExport(req, res, '\t', 'tsv'));
 router.get('/blocked-words.csv', (req, res) => blockedWordsExport(req, res, ',', 'csv'));
 
-// Actividad diaria de los ultimos 365 dias (la misma serie del grafico de Resumen).
+// Serie de actividad del grafico de Resumen: ?days=N&unit=day|week|month (por defecto 365 dias).
 router.get('/daily.csv', async (req, res) => {
   try {
-    const rows = await memo('daily', dashboard.daily, 365);
+    const days = Math.min(3650, Math.max(1, parseInt(req.query.days, 10) || 365));
+    const unit = ['week', 'month'].includes(req.query.unit) ? req.query.unit : 'day';
+    const rows = await memo(`daily:${unit}`, (d) => dashboard.daily(d, unit), days);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="actividad-diaria.csv"');
+    res.setHeader('Content-Disposition', `attachment; filename="actividad-${unit === 'day' ? 'diaria' : unit === 'week' ? 'semanal' : 'mensual'}.csv"`);
     res.write('﻿fecha,sesiones,usuarios_unicos,instalaciones_nuevas\n');
     for (const r of rows) res.write([r.day, r.sessions, r.users, r.installs].map(csvCell).join(',') + '\n');
     res.end();
