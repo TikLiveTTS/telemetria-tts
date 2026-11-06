@@ -13,11 +13,14 @@ const RANGES = [
   { label: '90 dias', days: 90, bucketMs: 24 * H },
   { label: '365 dias', days: 365, bucketMs: 24 * H },
 ];
-const PLAY_MS = 400;
+const PLAY_MS = 400; // por barra a velocidad x1
+const SPEEDS = [1, 2, 4, 8];
 // Igual que "app abierta" en vivo: sin latido en 5 min ya no cuenta.
 const GRACE_MS = 5 * 60 * 1000;
 
 let range = RANGES[0];
+let speed = 1;
+let onKey = null;
 
 export async function geoHistoryPage(view) {
   view.append(skeleton(3));
@@ -51,6 +54,10 @@ export async function geoHistoryPage(view) {
   const countLabel = el('div', { class: 'map-stat-value' });
   const mapDiv = el('div', { id: 'map-canvas' });
   const canvas = el('canvas');
+  const prevBtn = el('button', { class: 'btn', title: 'Paso atras (←)', text: '◀' });
+  const nextBtn = el('button', { class: 'btn', title: 'Paso adelante (→)', text: '▶|' });
+  const speedSel = el('select', { class: 'field', 'aria-label': 'Velocidad', title: 'Velocidad de reproduccion' },
+    ...SPEEDS.map((v) => el('option', { value: v, selected: v === speed }, `x${v}`)));
   const sel = el('select', { class: 'field', 'aria-label': 'Rango del historial' },
     ...RANGES.map((r) => el('option', { value: r.days, selected: r === range }, r.label)));
   sel.addEventListener('change', () => {
@@ -69,11 +76,13 @@ export async function geoHistoryPage(view) {
         el('div', { class: 'map-stat-card' },
           el('div', { class: 'map-stat-label', text: 'Apps abiertas' }), countLabel)),
       el('div', { class: 'chart-box', style: 'height:120px;margin-top:var(--s-4)' }, canvas),
-      el('div', { class: 'geo-time' }, playBtn, slider, timeLabel)
+      el('div', { class: 'geo-time' }, prevBtn, playBtn, nextBtn, slider, speedSel, timeLabel)
     )
   );
 
   const chart = barChart(canvas, labels, counts, { label: 'Apps abiertas' });
+  // Pocas etiquetas, rectas: con cientos de barras las rotadas no se leen.
+  Object.assign(chart.options.scales.x.ticks ||= {}, { maxTicksLimit: 12, maxRotation: 0, autoSkip: true });
 
   const show = () => {
     const i = Number(slider.value);
@@ -91,19 +100,40 @@ export async function geoHistoryPage(view) {
   };
   slider.addEventListener('input', show);
 
+  const go = (i) => { slider.value = Math.min(last, Math.max(0, i)); show(); };
   let timer = null;
   const stop = () => { clearInterval(timer); timer = null; playBtn.textContent = '▶'; };
-  playBtn.addEventListener('click', () => {
-    if (timer) return stop();
-    if (Number(slider.value) >= last) slider.value = 0;
-    playBtn.textContent = '❚❚';
+  const play = () => {
+    clearInterval(timer);
     timer = setInterval(() => {
       // Se navego a otra pagina: el cursor ya no esta en el DOM.
       if (!slider.isConnected || Number(slider.value) >= last) return stop();
-      slider.value = Number(slider.value) + 1;
-      show();
-    }, PLAY_MS);
-  });
+      go(Number(slider.value) + 1);
+    }, PLAY_MS / speed);
+  };
+  const toggle = () => {
+    if (timer) return stop();
+    if (Number(slider.value) >= last) slider.value = 0;
+    playBtn.textContent = '❚❚';
+    play();
+  };
+  playBtn.addEventListener('click', toggle);
+  prevBtn.addEventListener('click', () => { stop(); go(Number(slider.value) - 1); });
+  nextBtn.addEventListener('click', () => { stop(); go(Number(slider.value) + 1); });
+  speedSel.addEventListener('change', () => { speed = Number(speedSel.value); if (timer) play(); });
+
+  // Teclado: ← → un paso, espacio reproduce. Se desengancha solo al salir de la pagina.
+  if (onKey) document.removeEventListener('keydown', onKey);
+  onKey = (e) => {
+    if (!slider.isConnected) { document.removeEventListener('keydown', onKey); return stop(); }
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target !== slider) return;
+    if (e.key === 'ArrowLeft') { stop(); go(Number(slider.value) - 1); }
+    else if (e.key === 'ArrowRight') { stop(); go(Number(slider.value) + 1); }
+    else if (e.key === ' ') toggle();
+    else return;
+    e.preventDefault();
+  };
+  document.addEventListener('keydown', onKey);
 
   renderMap(mapDiv, points[last]);
   show();
