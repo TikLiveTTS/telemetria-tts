@@ -3,6 +3,7 @@
 const { query } = require('./db');
 const config = require('./config');
 const { refresh } = require('./memo');
+const { DEFAULT_WORDS } = require('./connectors/blocked-words');
 const insights = require('./queries/insights');
 const dashboard = require('./queries/dashboard');
 const { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
@@ -70,6 +71,16 @@ async function warm() {
       try { await refresh(name, fn, days); } catch (err) { console.error(`[jobs] warm ${name}:${days} fallo:`, err.message); }
     }
   }
+}
+
+// Borra las palabras por defecto de la app que ya estaban guardadas. Las tablas
+// de instalaciones y de historial semanal las arrastran por ON DELETE CASCADE.
+async function purgeDefaultBlockedWords() {
+  const { rowCount } = await query(
+    'DELETE FROM blocked_words WHERE word_norm = ANY($1::text[])',
+    [[...DEFAULT_WORDS]]
+  );
+  return rowCount;
 }
 
 async function sweepAbandonedSessions() {
@@ -149,6 +160,12 @@ function start() {
       console.error('[jobs] purga fallo:', err.message);
     }
     try {
+      const defaults = await purgeDefaultBlockedWords();
+      if (defaults > 0) console.log(`[jobs] palabras por defecto borradas: ${defaults}`);
+    } catch (err) {
+      console.error('[jobs] borrado de palabras por defecto fallo:', err.message);
+    }
+    try {
       const expired = await purgeOldBlockedWords();
       if (expired > 0) console.log(`[jobs] palabras bloqueadas caducadas: ${expired}`);
     } catch (err) {
@@ -167,6 +184,7 @@ function start() {
   // caido) y luego cada hora.
   runRollup(90).catch((err) => console.error('[jobs] rollup inicial fallo:', err.message));
   rebuildBlockedWordWeekly().catch((err) => console.error('[jobs] palabras bloqueadas inicial fallo:', err.message));
+  purgeDefaultBlockedWords().catch((err) => console.error('[jobs] palabras por defecto inicial fallo:', err.message));
   sweepAbandonedSessions().catch((err) => console.error('[jobs] cierre inicial de sesiones fallo:', err.message));
 
   warm();
@@ -179,4 +197,4 @@ function start() {
   return timer;
 }
 
-module.exports = { start, warm, daily, autoPublishCreators, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, sweepAbandonedSessions };
+module.exports = { start, warm, daily, autoPublishCreators, runRollup, rebuildBlockedWordWeekly, purgeOldEvents, purgeOldBlockedWords, purgeDefaultBlockedWords, sweepAbandonedSessions };

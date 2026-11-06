@@ -68,3 +68,14 @@ test('snapshot viejo o idéntico no pisa uno nuevo', async () => {
   await blockedWords.handle(ctx, { name: 'blocked_words_snapshot', props: props(['nuevo'], '2026-10-03T00:00:00Z') });
   assert.equal(calls.length, 2);
 });
+
+test('las palabras por defecto de la app no se guardan', async () => {
+  assert.ok(blockedWords.DEFAULT_WORDS.has('coño'));
+  assert.ok(blockedWords.DEFAULT_WORDS.has('negro de mierda'));
+  const calls = [];
+  const client = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; } };
+  await blockedWords.handle({ client, machine_id: 'machine-1' }, {
+    name: 'blocked_words_snapshot', props: props(['Puta', 'COÑO', 'Mierda', 'spam']),
+  });
+  assert.deepEqual(calls[1].params[0], ['spam']);
+});

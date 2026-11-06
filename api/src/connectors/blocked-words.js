@@ -20,6 +20,9 @@ function normalizeWord(value) {
   return word && word.length <= 40 && word.split(' ').length <= 3 ? word : null;
 }
 
+// Las palabras por defecto de la app no se guardan: estan en todas las instalaciones.
+const DEFAULT_WORDS = new Set(require('../default-blocked-words').map(normalizeWord));
+
 function snapshot(props) {
   if (!props || typeof props !== 'object' || Array.isArray(props)) return null;
   if (!Object.keys(props).every((key) => ['words', 'lang', 'snapshot_at', 'list_hash'].includes(key))) return null;
@@ -29,7 +32,7 @@ function snapshot(props) {
   const snapshotAt = new Date(props.snapshot_at);
   if (Number.isNaN(snapshotAt.getTime()) || snapshotAt.getTime() > Date.now() + 5 * 60 * 1000) return null;
 
-  const words = props.words.map(normalizeWord).filter((word) => word !== null);
+  const words = props.words.map(normalizeWord).filter((word) => word !== null && !DEFAULT_WORDS.has(word));
   return {
     words: [...new Set(words)], language: props.lang ? props.lang.toLowerCase() : null,
     snapshotAt, listHash: props.list_hash.toLowerCase(),
@@ -82,4 +85,4 @@ async function handle(ctx, event) {
   return false; // Nunca persiste el snapshot crudo en events.
 }
 
-module.exports = { name: 'moderation', handle, normalizeWord, snapshot, ignoreSnapshot };
+module.exports = { name: 'moderation', handle, normalizeWord, snapshot, ignoreSnapshot, DEFAULT_WORDS };
