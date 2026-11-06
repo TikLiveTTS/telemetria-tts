@@ -165,6 +165,72 @@ async function refreshFromProfiles(limit = 2000) {
   return saved;
 }
 
+// Recarga manual de TODAS las fotos (boton del panel): ignora la regla de "un
+// mes" y de "solo publicos". Va en segundo plano, una a una; las que fallan se
+// reintentan una vez al final. Si el perfil no da foto, prueba la URL que
+// guardo la app. El estado vive en memoria: lo lee el panel mientras corre.
+// ponytail: un solo trabajo a la vez y sin persistir; se pierde si se reinicia el servidor.
+const refreshJob = { running: false, total: 0, done: 0, saved: 0, failed: [], startedAt: null, finishedAt: null };
+
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function refreshOne(r) {
+  let url = null;
+  try { url = await profileAvatar(r); } catch (_) { /* plataforma sin respuesta */ }
+  if (url && await saveAvatar(r.id, url, r.old_file)) {
+    await query('UPDATE creators SET avatar_url = $2 WHERE id = $1', [r.id, url]);
+    return true;
+  }
+  // Respaldo: la URL que mando la app (a veces sigue viva).
+  return !!(r.avatar_url && await saveAvatar(r.id, r.avatar_url, r.old_file));
+}
+
+async function runRefreshAll() {
+  try {
+    const { rows } = await query(
+      `SELECT c.id, c.platform, c.username, c.channel_url, c.avatar_url, a.file AS old_file
+         FROM creators c
+         LEFT JOIN creator_avatars a ON a.creator_id = c.id
+        WHERE c.platform IN ('tiktok', 'youtube', 'twitch') AND NOT c.is_hidden
+        ORDER BY c.is_public DESC, c.follower_count DESC NULLS LAST`
+    );
+    refreshJob.total = rows.length;
+    await fs.mkdir(config.avatarDir, { recursive: true });
+
+    const failed = [];
+    for (const r of rows) {
+      if (await refreshOne(r)) refreshJob.saved++; else failed.push(r);
+      refreshJob.done++;
+      await pause(r.platform === 'tiktok' ? 2000 : 1000);
+    }
+    // Segunda vuelta con calma: casi siempre fue un corte puntual.
+    if (failed.length) await pause(15000);
+    for (const r of failed) {
+      if (await refreshOne(r)) refreshJob.saved++;
+      else refreshJob.failed.push(`${r.platform}:@${r.username}`);
+      await pause(3000);
+    }
+  } catch (err) {
+    console.error('[avatars] recarga total fallo:', err.message);
+    refreshJob.error = err.message;
+  } finally {
+    refreshJob.running = false;
+    refreshJob.finishedAt = new Date().toISOString();
+    console.log(`[avatars] recarga total: ${refreshJob.saved}/${refreshJob.total} guardadas, ${refreshJob.failed.length} sin foto`);
+  }
+}
+
+// Arranca la recarga (si ya hay una en curso devuelve su estado) y responde al instante.
+function startRefreshAll() {
+  if (!refreshJob.running) {
+    Object.assign(refreshJob, { running: true, total: 0, done: 0, saved: 0, failed: [], error: null, startedAt: new Date().toISOString(), finishedAt: null });
+    runRefreshAll();
+  }
+  return { ...refreshJob };
+}
+
+const refreshAllStatus = () => ({ ...refreshJob });
+
 // Se le pide a la app del creador (directiva re_resolve en /api/ingest) que
 // vuelva a resolver el canal y mande un avatar_url fresco cuando:
 //  - es publico y no tiene foto guardada (nuevo o su URL ya caduco), o
@@ -200,4 +266,4 @@ async function purgeHiddenAvatars() {
   return rows.length;
 }
 
-module.exports = { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, profileAvatar, EXT };
+module.exports = { startRefreshAll, refreshAllStatus, syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, profileAvatar, EXT };

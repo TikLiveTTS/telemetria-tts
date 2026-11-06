@@ -1,7 +1,11 @@
 'use strict';
 
 const express = require('express');
+const path = require('path');
 const c = require('../queries/creators');
+const avatars = require('../avatars');
+const { query } = require('../db');
+const config = require('../config');
 
 const router = express.Router();
 
@@ -41,6 +45,28 @@ router.post('/', wrap(async (req) => {
   const { platform, username, display_name, channel_url, avatar_url, user_id } = req.body || {};
   return c.createManual({ platform, username, display_name, channel_url, avatar_url, user_id });
 }));
+
+// Recarga de todas las fotos. Antes de '/:id' para que 'avatars' no se tome por un id.
+router.post('/avatars/refresh', wrap(() => avatars.startRefreshAll()));
+router.get('/avatars/refresh', wrap(() => avatars.refreshAllStatus()));
+
+// Foto guardada de cualquier creador, para el panel (la publica solo sirve a los publicos).
+router.get('/:id/avatar', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(404).end();
+  try {
+    const { rows } = await query('SELECT file, content_type FROM creator_avatars WHERE creator_id = $1 AND file IS NOT NULL', [id]);
+    if (!rows.length) return res.status(404).end();
+    res.setHeader('Cache-Control', 'private, max-age=86400'); // ?v= cambia al renovar la foto
+    res.type(rows[0].content_type);
+    res.sendFile(path.basename(rows[0].file), { root: config.avatarDir }, (err) => {
+      if (err && !res.headersSent) res.status(404).end();
+    });
+  } catch (err) {
+    console.error('[creators] avatar', err.message);
+    res.status(500).end();
+  }
+});
 
 router.get('/:id', wrap(async (req) => {
   const found = await c.detail(req.params.id);

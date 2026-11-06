@@ -49,9 +49,12 @@ async function list({ page = 1, pageSize = 50, sort = 'last_seen', platform, q, 
             country, app_version, resolve_count, force_resolve,
             first_seen_at, last_seen_at, total_sessions, total_minutes,
             is_public, is_hidden, featured_order, notes, is_new, platform_count,
+            has_avatar, avatar_v,
             COUNT(*) OVER ()::int AS total_rows
        FROM (
          SELECT c.*,
+                (av.file IS NOT NULL) AS has_avatar,
+                EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v,
                 (c.first_seen_at > NOW() - INTERVAL '24 hours') AS is_new,
                 COUNT(*) OVER (PARTITION BY ${partitionKey})::int AS platform_count,
                 ROW_NUMBER() OVER (
@@ -59,6 +62,7 @@ async function list({ page = 1, pageSize = 50, sort = 'last_seen', platform, q, 
                   ORDER BY c.follower_count DESC NULLS LAST, c.last_seen_at DESC
                 ) AS rn
            FROM creators c
+           LEFT JOIN creator_avatars av ON av.creator_id = c.id
            ${clause}
        ) c
       WHERE rn = 1
@@ -84,7 +88,11 @@ async function stats() {
 }
 
 async function detail(id) {
-  const { rows } = await query('SELECT * FROM creators WHERE id = $1', [id]);
+  const { rows } = await query(
+    `SELECT c.*, (av.file IS NOT NULL) AS has_avatar, EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v
+       FROM creators c LEFT JOIN creator_avatars av ON av.creator_id = c.id WHERE c.id = $1`,
+    [id]
+  );
   if (!rows.length) return null;
   const creator = rows[0];
 

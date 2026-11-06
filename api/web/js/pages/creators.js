@@ -9,7 +9,7 @@ import { openModal, closeModal } from '../modal.js';
 const ui = {
   page: 1,
   pageSize: 50,
-  sort: 'last_seen',
+  sort: 'first_seen', // los ultimos ingresados primero
   platform: '',
   q: '',
   onlyPublic: false,
@@ -26,6 +26,48 @@ const SORT_LABEL = {
   sessions: 'Mas sesiones',
   name: 'Nombre A-Z',
 };
+
+// Foto guardada en el servidor si existe: la URL del CDN de TikTok caduca y se ve rota.
+const photo = (c) => (c.has_avatar ? `/api/dashboard/creators/${c.id}/avatar?v=${c.avatar_v}` : c.avatar_url);
+
+// Recarga de todas las fotos: arranca el trabajo y sigue su progreso hasta el final.
+let photosBtn = null;
+let photosTimer = null;
+let watching = false; // solo se avisa al terminar una recarga que se estaba siguiendo
+
+function paintPhotos(st) {
+  if (!photosBtn) return;
+  photosBtn.disabled = st.running;
+  photosBtn.textContent = st.running
+    ? `Recargando fotos… ${num(st.done)}/${num(st.total)} (${num(st.saved)} guardadas)`
+    : '↻ Recargar todas las fotos';
+}
+
+async function pollPhotos() {
+  clearTimeout(photosTimer);
+  try {
+    const st = await api.get('/api/dashboard/creators/avatars/refresh');
+    paintPhotos(st);
+    if (st.running) { watching = true; photosTimer = setTimeout(pollPhotos, 3000); return; }
+    if (watching && st.finishedAt) {
+      watching = false;
+      const missing = st.failed.length;
+      toast(`Fotos listas: ${num(st.saved)} de ${num(st.total)} guardadas${missing ? `, ${num(missing)} sin foto (${st.failed.slice(0, 5).join(', ')}${missing > 5 ? '…' : ''})` : ''}`, missing > 0);
+      load({ silent: true });
+    }
+  } catch (_) { /* el siguiente refresco de pagina lo retoma */ }
+}
+
+async function reloadPhotos() {
+  if (!confirm('Se volvera a pedir la foto de TODOS los creadores a sus plataformas (una cada 1-2 s, puede tardar varios minutos). Sigue en segundo plano aunque cambies de pagina. ¿Seguir?')) return;
+  try {
+    paintPhotos(await api.post('/api/dashboard/creators/avatars/refresh'));
+    watching = true;
+    photosTimer = setTimeout(pollPhotos, 3000);
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
 
 let tbody, pagerInfo, bulkbar, bulkCount, headStats, pagePrev, pageNext;
 
@@ -90,6 +132,7 @@ export async function creatorsPage(view) {
         checkbox('Solo nuevos (24h)', ui.onlyNew, (v) => { ui.onlyNew = v; ui.page = 1; load(); }),
         checkbox('Incluir ocultos', ui.includeHidden, (v) => { ui.includeHidden = v; ui.page = 1; load(); }),
         el('a', { class: 'btn btn-sm', href: '/api/export/creators.csv' }, '⬇ CSV'),
+        photosBtn = el('button', { class: 'btn btn-sm', onclick: reloadPhotos, title: 'Vuelve a pedir la foto de cada creador a su plataforma' }, '↻ Recargar todas las fotos'),
         el('button', { class: 'btn btn-sm btn-accent', onclick: openAddModal }, '+ Destacar creador'),
       )
     ),
@@ -116,6 +159,7 @@ export async function creatorsPage(view) {
   );
 
   await load();
+  pollPhotos();
 }
 
 function select(options, value, onChange) {
@@ -232,7 +276,7 @@ function row(c) {
 
   const tr = el('tr', { class: 'clickable', onclick: () => showDetail(c.id) },
     el('td', {}, cb),
-    el('td', {}, avatar(c.avatar_url, c.display_name || c.username)),
+    el('td', {}, avatar(photo(c), c.display_name || c.username)),
     el('td', {},
       el('div', {}, link),
       c.display_name && c.display_name !== c.username
@@ -268,7 +312,7 @@ async function showDetail(id) {
 
   const content = [
     el('div', { class: 'drawer-head' },
-      avatar(c.avatar_url, c.display_name || c.username, true),
+      avatar(photo(c), c.display_name || c.username, true),
       el('div', {},
         el('h3', { text: `@${c.username}` }),
         el('div', { class: 'dim', style: 'font-size:var(--fs-sm)', text: c.display_name || '' }),
