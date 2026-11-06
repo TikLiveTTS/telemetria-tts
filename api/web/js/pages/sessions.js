@@ -2,7 +2,7 @@ import { api, qs } from '../api.js';
 import { el, clear, num, minutes, date, relative, avatar, platformPill, skeleton, CONNECTOR_LABELS, prettyEvent } from '../format.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
 
-const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '', live: '', sort: 'started', dir: 'desc' };
+const ui = { page: 1, pageSize: 50, platform: '', country: '', version: '', q: '', live: '', sort: 'status', dir: 'desc' }; // en live primero, luego app abierta y el resto
 
 let tbody, pagerInfo, pagePrev, pageNext;
 const sortHeads = [];

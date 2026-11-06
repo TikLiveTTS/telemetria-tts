@@ -2,6 +2,7 @@ import { api } from '../api.js';
 import { el, num, compact, minutes, date, relative, skeleton, countryName, avatar, platformPill, prettyEvent, CONNECTOR_LABELS } from '../format.js';
 import { barChart, updateChart } from '../charts.js';
 import { openDrawer, closeDrawer } from '../drawer.js';
+import { openModal, closeModal } from '../modal.js';
 
 // Mapa real con MapLibre GL, sin API key: estilo vectorial gratis de CARTO
 // (Positron) con sus propios tiles/sprite/glyphs, nitido a cualquier zoom.
@@ -198,6 +199,35 @@ function countryRow(c) {
   );
 }
 
+const countriesTable = (tbody) => el('table', {},
+  el('thead', {}, el('tr', {},
+    el('th', { text: 'Pais' }),
+    el('th', { class: 'right', text: 'Instalaciones' }),
+    el('th', { class: 'right', text: 'Sesiones historicas' }),
+    el('th', { class: 'right', text: 'Tiempo historico' })
+  )),
+  tbody
+);
+
+// Lista completa en un modal: la tarjeta solo trae los 20 primeros.
+async function openAllCountries() {
+  openModal(el('div', { class: 'section-title', text: 'Detalle historico por pais' }), skeleton(3));
+  let rows;
+  try {
+    rows = await api.get('/api/dashboard/geo/countries?limit=250');
+  } catch (err) {
+    openModal(el('div', { class: 'empty', text: err.message }));
+    return;
+  }
+  openModal(
+    el('div', { class: 'section-title', style: 'display:flex;align-items:center' },
+      `Detalle historico por pais (${rows.length})`,
+      el('button', { class: 'btn btn-sm', style: 'margin-left:auto', onclick: closeModal }, 'Cerrar')),
+    el('div', { class: 'table-wrap', style: 'max-height:70vh;overflow-y:auto' },
+      countriesTable(el('tbody', {}, rows.map(countryRow))))
+  );
+}
+
 export async function geoPage(view) {
   const myId = ++renderId;
   view.append(skeleton(3));
@@ -236,17 +266,11 @@ export async function geoPage(view) {
         el('div', { class: 'chart-box' }, el('canvas', { id: 'c-countries' }))
       ),
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Detalle historico por pais' }),
+        el('div', { class: 'section-title', style: 'display:flex;align-items:center' },
+          'Detalle historico por pais',
+          el('button', { class: 'btn btn-sm', style: 'margin-left:auto', onclick: openAllCountries }, 'Ver lista completa')),
         el('div', { class: 'table-wrap', style: 'max-height:250px;overflow-y:auto' },
-          el('table', {},
-            el('thead', {}, el('tr', {},
-              el('th', { text: 'Pais' }),
-              el('th', { class: 'right', text: 'Instalaciones' }),
-              el('th', { class: 'right', text: 'Sesiones historicas' }),
-              el('th', { class: 'right', text: 'Tiempo historico' })
-            )),
-            countriesTbody
-          )
+          countriesTable(countriesTbody)
         )
       )
     )

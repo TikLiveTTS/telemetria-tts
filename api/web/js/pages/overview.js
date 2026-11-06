@@ -10,7 +10,6 @@ let dailyBox = null;
 let retBox = null;
 let platBox = null;
 let chartDaily = null;
-let chartRet = null;
 let chartPlat = null;
 let renderId = 0;
 
@@ -82,10 +81,9 @@ function buildLayout(view) {
   refs.creators = kpi('Creadores', '');
 
   dailyBox = el('div', { class: 'chart-box' });
-  retBox = el('div', { class: 'chart-box' });
+  retBox = el('div');
   platBox = el('div', { class: 'chart-box' });
   chartDaily = null;
-  chartRet = null;
   chartPlat = null;
 
   view.replaceChildren(
@@ -106,7 +104,8 @@ function buildLayout(view) {
 
     el('div', { class: 'grid-2' },
       el('div', { class: 'card' },
-        el('div', { class: 'section-title', text: 'Retencion por cohorte semanal' }),
+        el('div', { class: 'section-title', text: 'Cuantos vuelven tras instalar' }),
+        el('div', { class: 'kpi-sub', style: 'margin:0 0 var(--s-3)', text: 'Agrupa las instalaciones por semana y mira que porcentaje volvio a abrir la app despues. Sirve para saber si la app engancha: si el % baja en las semanas nuevas, algo empeoro.' }),
         retBox
       ),
       el('div', { class: 'card' },
@@ -135,11 +134,50 @@ function applyDaily(daily) {
   }
 }
 
+const DAY_MS = 86400000;
+
+// Cohortes semanales como tabla: cada fila es la semana en que instalaron y
+// cada columna que % volvio a abrir la app en 1, 7 o 30 dias despues.
+// Una celda solo se muestra si ya paso todo el plazo para toda la semana;
+// si no, el % estaria artificialmente bajo y engana.
+function paintRetention(rows) {
+  if (!rows.length) { retBox.replaceChildren(el('div', { class: 'empty', text: 'Sin cohortes todavia' })); return; }
+  const now = Date.now();
+  const WINDOWS = [['d1', 1, 'Al dia siguiente'], ['d7', 7, 'En 7 dias'], ['d30', 30, 'En 30 dias']];
+  const done = (r, n) => new Date(`${String(r.week).slice(0, 10)}T00:00:00`).getTime() + (6 + n + 1) * DAY_MS <= now;
+
+  // Resumen: media ponderada por usuarios, solo con cohortes completas.
+  const avg = (key, n) => {
+    const ok = rows.filter((r) => done(r, n));
+    const users = ok.reduce((a, r) => a + r.users, 0);
+    return users ? Math.round(ok.reduce((a, r) => a + r.users * Number(r[key]), 0) / users) : null;
+  };
+  const cell = (r, [key, n]) => {
+    if (!done(r, n)) return el('td', { class: 'right dim', title: 'Aun no ha pasado el plazo completo', text: 'en curso' });
+    const v = Number(r[key]);
+    return el('td', { class: 'right nowrap', style: `background:linear-gradient(90deg,color-mix(in srgb,${COLORS.accent} 35%,transparent) ${v}%,transparent ${v}%)`, text: `${v}%` });
+  };
+  const summary = el('div', { style: 'display:flex;gap:var(--s-5);flex-wrap:wrap;margin-bottom:var(--s-3)' },
+    ...WINDOWS.map(([key, n, label]) => el('div', {},
+      el('div', { class: 'kpi-value', style: 'font-size:var(--fs-xl)', text: avg(key, n) === null ? '—' : `${avg(key, n)}%` }),
+      el('div', { class: 'kpi-sub', text: label }))));
+
+  retBox.replaceChildren(summary, el('div', { class: 'table-wrap', style: 'max-height:200px;overflow-y:auto' },
+    el('table', {},
+      el('thead', {}, el('tr', {},
+        el('th', { text: 'Semana del' }), el('th', { class: 'right', text: 'Instalaron' }),
+        ...WINDOWS.map(([, , label]) => el('th', { class: 'right', text: label })))),
+      el('tbody', {}, [...rows].reverse().map((r) => el('tr', {},
+        el('td', { text: String(r.week).slice(0, 10) }),
+        el('td', { class: 'right', text: num(r.users) }),
+        ...WINDOWS.map((w) => cell(r, w))))))));
+}
+
 // Actualiza valores de KPI y los 3 charts con datos frescos, sin tocar el
 // resto del DOM. Usada tanto en la carga inicial como en cada refresco.
 function applyData(s, daily, retention, platforms) {
   refs.installs.valueEl.textContent = num(s.total_installs);
-  clear(refs.installs.subEl).append(el('span', { class: 'dim', text: 'maquinas unicas' }));
+  clear(refs.installs.subEl).append(el('span', { class: 'dim', text: 'maquinas unicas, desde el inicio' }));
 
   refs.activeNow.valueEl.textContent = num(s.active_now);
   clear(refs.activeNow.subEl).append(el('span', {
@@ -166,28 +204,7 @@ function applyData(s, daily, retention, platforms) {
 
   applyDaily(daily);
 
-  // Retencion: puede estar vacia y pasar a tener datos entre refrescos (o al reves).
-  if (retention.length) {
-    const retLabels = retention.map((r) => String(r.week).slice(5, 10));
-    const retSeries = [
-      { label: 'D1 %', data: retention.map((r) => Number(r.d1)), color: COLORS.accent, fill: false },
-      { label: 'D7 %', data: retention.map((r) => Number(r.d7)), color: COLORS.accent2, fill: false },
-      { label: 'D30 %', data: retention.map((r) => Number(r.d30)), color: COLORS.warn, fill: false },
-    ];
-    if (chartRet) {
-      updateChart(chartRet, retLabels, retSeries.map((d) => d.data));
-    } else {
-      const canvas = el('canvas', { id: 'c-ret' });
-      retBox.replaceChildren(canvas);
-      chartRet = lineChart(canvas, retLabels, retSeries);
-    }
-  } else {
-    if (chartRet) {
-      chartRet.destroy();
-      chartRet = null;
-    }
-    retBox.replaceChildren(el('div', { class: 'empty', text: 'Sin cohortes todavia' }));
-  }
+  paintRetention(retention);
 
   // Plataformas: mismo caso, puede aparecer/desaparecer entre refrescos.
   if (platforms.length) {
