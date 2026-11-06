@@ -19,7 +19,16 @@ async function request(url, options = {}) {
   }
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (_) {
+    // El proxy (Caddy/Traefik) responde texto o HTML si la API esta reiniciando
+    // o tarda demasiado: no es JSON, pero tampoco un fallo del panel.
+    throw new Error(res.ok
+      ? 'Respuesta inesperada del servidor, reintenta en unos segundos'
+      : `El servidor no esta disponible (HTTP ${res.status}), reintenta en unos segundos`);
+  }
 
   if (!res.ok) throw new Error((data && data.error) || `HTTP ${res.status}`);
   return data;
