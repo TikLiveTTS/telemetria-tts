@@ -66,7 +66,7 @@ async function purgeOldBlockedWords() {
 async function warm() {
   for (const days of [30, 7, 90, 365]) {
     for (const [name, fn] of [['habits', insights.habits], ['activation', insights.activation],
-      ['rollout', insights.versionRollout], ['features', dashboard.features]]) {
+      ['rollout', insights.versionRollout], ['features', dashboard.features], ['daily', dashboard.daily]]) {
       try { await refresh(name, fn, days); } catch (err) { console.error(`[jobs] warm ${name}:${days} fallo:`, err.message); }
     }
   }

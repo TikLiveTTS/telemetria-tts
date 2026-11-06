@@ -4,6 +4,8 @@ const express = require('express');
 const { pool } = require('../db');
 const blockedWords = require('../queries/blocked-words');
 const config = require('../config');
+const dashboard = require('../queries/dashboard');
+const { memo } = require('../memo');
 const { csvCell, exportCell } = require('../export-cells');
 
 const router = express.Router();
@@ -69,6 +71,21 @@ async function blockedWordsExport(req, res, separator, extension) {
 
 router.get('/blocked-words.tsv', (req, res) => blockedWordsExport(req, res, '\t', 'tsv'));
 router.get('/blocked-words.csv', (req, res) => blockedWordsExport(req, res, ',', 'csv'));
+
+// Actividad diaria de los ultimos 365 dias (la misma serie del grafico de Resumen).
+router.get('/daily.csv', async (req, res) => {
+  try {
+    const rows = await memo('daily', dashboard.daily, 365);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="actividad-diaria.csv"');
+    res.write('﻿fecha,sesiones,usuarios_unicos,instalaciones_nuevas\n');
+    for (const r of rows) res.write([r.day, r.sessions, r.users, r.installs].map(csvCell).join(',') + '\n');
+    res.end();
+  } catch (err) {
+    console.error('[export]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
 
 function dataset(req, res) {
   const name = String(req.params.dataset || 'sessions');

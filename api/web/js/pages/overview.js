@@ -67,7 +67,9 @@ function buildLayout(view) {
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
-      el('div', { class: 'section-title', text: 'Actividad diaria' }),
+      el('div', { class: 'section-title', style: 'display:flex;align-items:center;gap:var(--s-3)' },
+        'Actividad diaria · ultimos 365 dias',
+        el('a', { class: 'btn btn-sm', style: 'margin-left:auto', href: '/api/export/daily.csv', title: 'Descargar la serie diaria en CSV' }, '⬇ CSV')),
       dailyBox
     ),
 
@@ -114,7 +116,7 @@ function applyData(s, daily, retention, platforms) {
   clear(refs.creators.subEl).append(el('span', { class: 'dim', text: `${num(s.creators_public)} publicos` }));
 
   // Actividad diaria: el chart siempre existe.
-  const dailyLabels = daily.map((d) => String(d.day).slice(5, 10));
+  const dailyLabels = daily.map((d) => String(d.day).slice(2, 10)); // AA-MM-DD: 365 dias cruzan anos
   const dailySeries = [
     { label: 'Sesiones', data: daily.map((d) => d.sessions), color: COLORS.accent },
     { label: 'Usuarios unicos', data: daily.map((d) => d.users), color: COLORS.accent2 },
@@ -174,7 +176,7 @@ function applyData(s, daily, retention, platforms) {
 async function fetchAll() {
   return Promise.all([
     api.get(`/api/dashboard/summary?days=${state.days}`),
-    api.get(`/api/dashboard/daily?days=${Math.min(state.days, 180)}`),
+    api.get(`/api/dashboard/daily?days=365`),
     api.get('/api/dashboard/retention'),
     api.get(`/api/dashboard/platforms?days=${state.days}`),
   ]);
