@@ -71,11 +71,11 @@ router.post('/versions/hidden', async (req, res) => {
   }
 });
 // Cada apartado de Habitos se pide por separado: ?section=durations|hours|stickiness|churn|heatmap
-router.get('/habits',     wrap((req) => {
+router.get('/habits', (req, res) => {
   const section = String(req.query.section);
-  if (!insights.HABIT_SECTIONS[section]) throw new Error('section invalida');
-  return memo(`habits:${section}`, (d) => insights.habitSection(section, d), periodDays(req));
-}));
+  if (!insights.HABIT_SECTIONS[section]) return res.status(400).json({ error: 'section invalida' });
+  return wrap((r) => memo(`habits:${section}`, (d) => insights.habitSection(section, d), periodDays(r)))(req, res);
+});
 router.get('/activation', wrap((req) => memo('activation', insights.activation, periodDays(req))));
 router.get('/features',   wrap((req) => memo('features', q.features, periodDays(req))));
 router.get('/geo/installs',  wrap(() => q.installPoints()));

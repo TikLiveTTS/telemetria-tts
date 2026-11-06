@@ -6,6 +6,7 @@ const blockedWords = require('../queries/blocked-words');
 const config = require('../config');
 const dashboard = require('../queries/dashboard');
 const insights = require('../queries/insights');
+const analysis = require('../queries/analysis');
 const { memo } = require('../memo');
 const { csvCell, exportCell } = require('../export-cells');
 
@@ -72,6 +73,23 @@ async function blockedWordsExport(req, res, separator, extension) {
 
 router.get('/blocked-words.tsv', (req, res) => blockedWordsExport(req, res, '\t', 'tsv'));
 router.get('/blocked-words.csv', (req, res) => blockedWordsExport(req, res, ',', 'csv'));
+
+// Una fila por instalacion con metricas calculadas, pensada para analizarla (con IA o a mano).
+router.get('/analysis.csv', async (req, res) => {
+  try {
+    const rows = await analysis.analysisRows();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="telemetria-analisis-${new Date().toISOString().slice(0, 10)}.csv"`);
+    if (!rows.length) return res.end('');
+    const headers = Object.keys(rows[0]);
+    res.write('\uFEFF' + headers.join(',') + '\n');
+    for (const r of rows) res.write(headers.map((h) => csvCell(r[h])).join(',') + '\n');
+    res.end();
+  } catch (err) {
+    console.error('[export]', err.message);
+    res.status(500).json({ error: 'Error interno' });
+  }
+});
 
 // Serie de actividad del grafico de Resumen: ?days=N&unit=day|week|month (por defecto 365 dias).
 router.get('/daily.csv', async (req, res) => {

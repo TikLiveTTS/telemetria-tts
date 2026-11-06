@@ -1,6 +1,27 @@
 import { api } from '../api.js';
 import { el, num, date, toast, skeleton } from '../format.js';
 
+// Descripcion de las columnas del CSV de analisis, lista para pegarla junto al archivo en una IA.
+const ANALYSIS_DICTIONARY = `Archivo: telemetria-analisis.csv. Telemetria de TikLiveTTS (app de TTS para streamers). Una fila por instalacion de la app; la clave es "id" (seudonimo, sin datos personales).
+Columnas:
+- first_seen_date, last_seen_date: primera y ultima vez que se vio la app (fecha local, America/Guayaquil).
+- age_days: dias desde la instalacion. days_since_last_seen: dias desde la ultima vez que se abrio.
+- status: activo (visto en los ultimos 7 dias), enfriandose (7 a 14 dias sin abrir), perdido (14+ dias sin abrir).
+- app_version, os_platform, os_release, os_arch, locale: version de la app y equipo/idioma.
+- country_code, country, city: ubicacion aproximada por IP.
+- total_sessions, total_minutes: totales de toda la vida.
+- sessions_7d / sessions_30d / sessions_90d: sesiones en esas ventanas. minutes_30d: minutos de uso en 30 dias.
+- avg_session_min, max_session_min: duracion media y maxima de sesiones cerradas.
+- active_days: dias distintos con uso (toda la vida). active_days_30d: lo mismo en los ultimos 30 dias.
+- peak_hour_local: hora del dia (0-23, aproximada por longitud) en que mas abre la app. peak_weekday_1mon: dia de la semana mas usado (1=lunes ... 7=domingo). weekend_sessions_pct: % de sesiones en fin de semana.
+- returned_next_day / returned_within_7d / returned_within_30d: true si volvio a abrir la app tras el dia de instalacion en ese plazo (solo comparable entre instalaciones con age_days suficiente).
+- minutes_to_first_connect: minutos entre instalar y conectar por primera vez una plataforma (vacio = nunca conecto).
+- platforms_used, n_platforms: plataformas (tiktok, twitch, youtube, kick) usadas en sesiones.
+- events_90d, distinct_features_90d: cantidad de eventos y de funciones distintas usadas en 90 dias.
+- top_features_90d: las 5 funciones mas usadas en 90 dias, formato conector.funcion:veces separadas por "|".
+- n_channels, channel_platforms, max_followers, is_public_creator: canales de creador vinculados, plataformas, seguidores maximos y si aparece en la web publica.
+Valores vacios = sin dato. No incluye IP, coordenadas, correos ni nombres de canal.`;
+
 let renderId = 0;
 
 export async function settingsPage(view) {
@@ -60,6 +81,24 @@ export async function settingsPage(view) {
           }
         } }, 'Copiar'),
         el('a', { class: 'btn btn-sm', href: '/api/public/creators', target: '_blank' }, 'Ver JSON publico')
+      )
+    ),
+
+    el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
+      el('div', { class: 'section-title', text: 'Datos para analizar (IA o a mano)' }),
+      el('p', { class: 'dim', style: 'font-size:var(--fs-sm);margin-bottom:var(--s-3)' },
+        'El CSV de analisis trae una fila por instalacion con metricas ya calculadas: antiguedad, uso en 7/30/90 dias, horas y dias preferidos, retencion, tiempo hasta conectar, funciones mas usadas, plataformas y creador. Sirve para buscar patrones, segmentos y causas de abandono. No incluye IP, coordenadas, correos ni nombres de canal. Pegale a la IA la descripcion de columnas junto al archivo.'),
+      el('div', { class: 'filters', style: 'margin:0' },
+        el('a', { class: 'btn btn-sm btn-accent', href: '/api/export/analysis.csv' }, '⬇ CSV de analisis'),
+        el('a', { class: 'btn btn-sm', href: '/api/export/daily.csv?days=365&unit=day', title: 'Sesiones, usuarios unicos e instalaciones nuevas por dia' }, '⬇ Serie diaria (365 dias)'),
+        el('button', { class: 'btn btn-sm', onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(ANALYSIS_DICTIONARY);
+            toast('Descripcion de columnas copiada');
+          } catch (_) {
+            toast('No se pudo copiar', true);
+          }
+        } }, 'Copiar descripcion de columnas')
       )
     ),
 
