@@ -37,6 +37,9 @@ const config = {
   retentionDays: int('RETENTION_DAYS', 365),
   blockedWordsK: Math.max(1, int('BLOCKED_WORDS_K', 3)),
   activeDays: Math.max(0, int('ACTIVE_DAYS', 0)),
+  // Minutos sin actividad (TTS, musica, sonidos) tras los que una app conectada
+  // se considera 'conectada sin actividad' (probable olvido de desconectar).
+  liveIdleMin: Math.max(1, int('LIVE_IDLE_MIN', 30)),
   anonymizeIp: bool('ANONYMIZE_IP', false),
   trustProxy: bool('TRUST_PROXY', false),
 

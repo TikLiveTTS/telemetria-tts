@@ -166,16 +166,19 @@ export async function showInstall(machineId) {
 
 let statValueEl = null;
 let statWithoutGeoEl = null;
+let statOtherEl = null;
 
 function statCard(live) {
   statValueEl = el('div', { class: 'map-stat-value' });
   statWithoutGeoEl = el('div', { class: 'map-stat-label' });
+  statOtherEl = el('a', { class: 'map-stat-label', href: '#/sessions', style: 'display:block;text-decoration:underline', title: 'Ver quien es en Sesiones' });
   updateStatCard(live);
 
   return el('div', { class: 'map-stat-card' },
-    el('div', { class: 'map-stat-label', text: 'Apps abiertas' }),
+    el('div', { class: 'map-stat-label', text: 'En live' }),
     statValueEl,
-    statWithoutGeoEl
+    statWithoutGeoEl,
+    statOtherEl
   );
 }
 
@@ -184,6 +187,12 @@ function updateStatCard(live) {
   statValueEl.textContent = num(live.count);
   statWithoutGeoEl.textContent = `+${num(live.without_geo)} sin ubicacion`;
   statWithoutGeoEl.hidden = !live.without_geo;
+  // Fuera del mapa: conectadas sin actividad y apps abiertas sin directo.
+  const parts = [];
+  if (live.idle) parts.push(`${num(live.idle)} conectadas sin actividad`);
+  if (live.open) parts.push(`${num(live.open)} apps abiertas`);
+  statOtherEl.textContent = parts.join(' · ');
+  statOtherEl.hidden = !parts.length;
 }
 
 let countriesChart = null;
@@ -248,11 +257,11 @@ export async function geoPage(view) {
   view.replaceChildren(
     el('div', { class: 'page-head' },
       el('div', {}, el('h2', { text: 'Geografia' }),
-        el('div', { class: 'sub', text: 'Puntos: sesiones con la app abierta (latido en los ultimos 5 minutos). No indica transmision en vivo' }))
+        el('div', { class: 'sub', text: 'Puntos: usuarios en live (conectados a su plataforma y con actividad en los ultimos 30 min). Quien solo tiene la app abierta o se olvido de desconectar se ve en Sesiones' }))
     ),
 
     el('div', { class: 'card', style: 'margin-bottom:var(--s-5)' },
-      el('div', { class: 'section-title', text: 'Apps abiertas ahora' }),
+      el('div', { class: 'section-title', text: 'En live ahora' }),
       el('div', { id: 'map-wrap' },
         mapDiv,
         statCard(live)

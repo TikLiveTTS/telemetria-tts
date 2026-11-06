@@ -46,7 +46,7 @@ export async function sessionsPage(view) {
   platformSel.addEventListener('change', () => { ui.platform = platformSel.value; ui.page = 1; load(); });
 
   const liveSel = el('select', { class: 'field', 'aria-label': 'Filtrar por live' },
-    ...[['', 'Todos'], ['1', 'En live'], ['0', 'Sin live']]
+    ...[['', 'Todos'], ['live', 'En live'], ['idle', 'Conectada sin actividad'], ['open', 'Solo app abierta'], ['closed', 'Cerradas']]
       .map(([v, l]) => el('option', { value: v, selected: v === ui.live || null }, l))
   );
   liveSel.addEventListener('change', () => { ui.live = liveSel.value; ui.page = 1; load(); });
@@ -165,16 +165,16 @@ function creatorCell(s) {
   ));
 }
 
-// El estado lo decide el servidor (app_open ya excluye sesiones cerradas).
-// "App abierta" no afirma una transmision: aun no hay senal LIVE verificada.
+// El estado lo decide el servidor (live_state). "Conectada sin actividad" =
+// sigue conectada a su plataforma pero lleva mas de 30 min sin que el TTS, la
+// musica o los sonidos hagan nada: probablemente se olvido de desconectar.
 function sessionBadge(s) {
-  if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
-  if (s.app_open || s.connected) {
-    return el('div', { style: 'display:flex;flex-direction:column;align-items:flex-start;gap:4px' },
-      s.connected ? el('span', { class: 'badge badge-live', title: 'Canal conectado a la plataforma (senal cada minuto)', text: 'Live' }) : null,
-      s.app_open ? el('span', { class: 'badge badge-mut', text: 'App abierta' }) : null
-    );
+  if (s.live_state === 'live') return el('span', { class: 'badge badge-live', title: 'Conectado a su plataforma y con actividad reciente', text: 'Live' });
+  if (s.live_state === 'idle') {
+    return el('span', { class: 'badge badge-warn', title: 'Sigue conectado a su plataforma pero sin actividad en los ultimos 30 min: probablemente se olvido de desconectar', text: 'Conectada sin actividad' });
   }
+  if (s.live_state === 'open') return el('span', { class: 'badge badge-mut', title: 'App abierta, sin conexion a ninguna plataforma', text: 'App abierta' });
+  if (s.ended_at) return el('span', { class: 'badge badge-mut', text: 'cerrada' });
   return el('span', { class: 'badge badge-mut', text: 'sin cierre' });
 }
 

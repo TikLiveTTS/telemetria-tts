@@ -73,7 +73,7 @@ function buildLayout(view) {
   csvLink = el('a', { class: 'btn btn-sm', href: `/api/export/daily.csv?${dailyQuery()}`, title: 'Descargar esta serie en CSV' }, '⬇ CSV');
   refs.installs = kpi('Instalaciones', 'accent');
   refs.activeNow = kpi('Apps abiertas', 'cyan');
-  refs.connectedNow = kpi('Conectado a plataforma', 'cyan');
+  refs.connectedNow = kpi('En live ahora', 'cyan');
   refs.activeToday = kpi('Activos hoy', '');
   refs.activePeriod = kpi(`Activos ${state.days} dias`, '');
   refs.newPeriod = kpi(`Nuevos ${state.days} dias`, 'green');
@@ -184,8 +184,12 @@ function applyData(s, daily, retention, platforms) {
     class: 'dim', text: 'con latido en los ultimos 5 minutos', title: 'App abierta con latido hace menos de 5 minutos. No indica que este transmitiendo en vivo',
   }));
 
-  refs.connectedNow.valueEl.textContent = num(s.connected_now);
-  clear(refs.connectedNow.subEl).append(el('span', { class: 'dim', text: 'con señal recibida en los ultimos 150 segundos' }));
+  refs.connectedNow.valueEl.textContent = num(s.live_now);
+  clear(refs.connectedNow.subEl).append(el('span', {
+    class: 'dim',
+    text: `${num(s.idle_now)} conectadas sin actividad (+${s.live_idle_min} min)`,
+    title: 'Conectadas a su plataforma pero sin actividad del TTS, musica o sonidos: probablemente se olvidaron de desconectar',
+  }));
 
   refs.activeToday.valueEl.textContent = num(s.active_today);
   clear(refs.activeToday.subEl).append(el('span', { class: 'dim', text: 'dia local' }));

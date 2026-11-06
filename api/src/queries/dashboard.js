@@ -12,6 +12,35 @@ const REAL_INSTALL = "machine_id NOT LIKE 'manual:%'";
 const APP_OPEN = `(ended_at IS NULL AND received_at > NOW() - INTERVAL '5 minutes')`;
 const CONNECTED = `(ended_at IS NULL AND live_heartbeat_at > NOW() - INTERVAL '150 seconds')`;
 
+// "En live" de verdad: conectada a su plataforma Y con actividad reciente. Una
+// app que sigue conectada pero lleva LIVE_IDLE_MIN minutos sin actividad es
+// 'idle' (probable olvido de desconectar). Estados de una sesion:
+//   live   conectada y con senal reciente (o sin ninguna senal registrada: se
+//          le da el beneficio de la duda, no se puede saber)
+//   idle   conectada pero sin senal en LIVE_IDLE_MIN minutos
+//   open   app abierta sin conexion a plataforma
+//   closed cerrada o abandonada
+// Senal = ultima actividad real del TTS o ultima conexion a una plataforma.
+const IDLE_MIN = config.liveIdleMin;
+const ACTIVITY = [
+  'tts.spoken', 'tts.skipped', 'tts.rate_limited',
+  'music.request', 'music.skip', 'soundpad.triggered', 'moderation.message_filtered',
+];
+const ACTIVITY_PAIRS = ACTIVITY.map((a) => `('${a.split('.')[0]}','${a.split('.')[1]}')`).join(',');
+const LAST_SIGNAL = `GREATEST(
+  (SELECT e.ts FROM events e WHERE e.session_id = s.session_id
+      AND (e.connector, e.name) IN (${ACTIVITY_PAIRS}) ORDER BY e.ts DESC LIMIT 1),
+  (SELECT e.ts FROM events e WHERE e.session_id = s.session_id
+      AND e.connector = 'platforms' AND e.name = 'connected' ORDER BY e.ts DESC LIMIT 1))`;
+// La senal solo se busca para sesiones conectadas (decenas): el CASE evita
+// consultar events de las demas. Requiere la tabla de sesiones con alias `s`.
+const SIGNAL_JOIN = `LEFT JOIN LATERAL (SELECT CASE WHEN ${CONNECTED} THEN ${LAST_SIGNAL} END AS sig) g ON TRUE`;
+const LIVE_STATE = `(CASE
+  WHEN ${CONNECTED} THEN
+    CASE WHEN g.sig IS NULL OR g.sig > NOW() - INTERVAL '${IDLE_MIN} minutes' THEN 'live' ELSE 'idle' END
+  WHEN ${APP_OPEN} THEN 'open'
+  ELSE 'closed' END)`;
+
 // KPIs de cabecera. `prev_*` permite mostrar el delta contra el periodo
 // anterior de la misma longitud.
 async function summary(days) {
@@ -43,6 +72,19 @@ async function summary(days) {
        (SELECT COUNT(*) FROM creators WHERE NOT is_hidden)::int AS creators_total,
        (SELECT COUNT(*) FROM creators WHERE is_public AND NOT is_hidden)::int AS creators_public`,
     [days, TZ]
+  );
+  const live = await liveCounts();
+  return { ...rows[0], ...live, live_idle_min: IDLE_MIN };
+}
+
+// Sesiones sin cerrar por estado (en live / conectadas sin actividad / abiertas).
+async function liveCounts() {
+  const { rows } = await query(
+    `SELECT COUNT(*) FILTER (WHERE st = 'live')::int AS live_now,
+            COUNT(*) FILTER (WHERE st = 'idle')::int AS idle_now
+       FROM (SELECT ${LIVE_STATE} AS st
+               FROM sessions s ${SIGNAL_JOIN}
+              WHERE s.ended_at IS NULL) t`
   );
   return rows[0];
 }
@@ -150,25 +192,28 @@ async function countries(limit = 10, period = {}) {
   return rows;
 }
 
-// Puntos del mapa: solo sesiones con la app abierta. `count` coincide con los
-// puntos; `without_geo` son las apps abiertas que no se pueden dibujar.
+// Puntos del mapa: solo usuarios EN LIVE (conectados a su plataforma y con
+// actividad reciente). `count` coincide con los puntos; `without_geo` son los
+// que estan en live pero no se pueden dibujar. `idle` y `open` cuentan las
+// conectadas sin actividad y las apps abiertas sin conexion: se ven en Sesiones.
 async function liveMap() {
-  const [{ rows: points }, { rows: withoutGeo }] = await Promise.all([
-    query(
-      `SELECT s.machine_id, s.lat, s.lon, s.city, s.country, s.country_code
-         FROM sessions s
-        WHERE ${APP_OPEN}
-          AND s.lat IS NOT NULL AND s.lon IS NOT NULL`
-    ),
-    query(
-      `SELECT COUNT(*)::int AS count
-         FROM sessions s
-        WHERE ${APP_OPEN}
-          AND (s.lat IS NULL OR s.lon IS NULL)`
-    ),
-  ]);
+  const { rows } = await query(
+    `SELECT s.machine_id, s.lat, s.lon, s.city, s.country, s.country_code,
+            ${LIVE_STATE} AS st
+       FROM sessions s ${SIGNAL_JOIN}
+      WHERE s.ended_at IS NULL AND (${APP_OPEN} OR ${CONNECTED})`
+  );
 
-  return { points, count: points.length, without_geo: withoutGeo[0].count };
+  const live = rows.filter((r) => r.st === 'live');
+  const hasGeo = (r) => r.lat !== null && r.lon !== null;
+  return {
+    points: live.filter(hasGeo).map(({ st, ...p }) => p),
+    count: live.filter(hasGeo).length,
+    without_geo: live.filter((r) => !hasGeo(r)).length,
+    idle: rows.filter((r) => r.st === 'idle').length,
+    open: rows.filter((r) => r.st === 'open').length,
+    idle_min: IDLE_MIN,
+  };
 }
 
 // Una instalacion = un punto, en la ultima ubicacion conocida (la misma que
@@ -265,8 +310,8 @@ const SESSION_SORTS = {
   started: 's.started_at',
   sessions: 's.session_count',
   duration: 's.session_duration_minutes',
-  // Live > app abierta > resto (cerrada / sin cierre).
-  status: `CASE WHEN COALESCE(${CONNECTED}, FALSE) THEN 2 WHEN ${APP_OPEN} THEN 1 ELSE 0 END`,
+  // Live > conectada sin actividad > app abierta > resto (cerrada / sin cierre).
+  status: `CASE ${LIVE_STATE} WHEN 'live' THEN 3 WHEN 'idle' THEN 2 WHEN 'open' THEN 1 ELSE 0 END`,
   version: `(SELECT array_agg(m[1]::int ORDER BY n)
                FROM regexp_matches(s.app_version, '[0-9]+', 'g') WITH ORDINALITY AS t(m, n))`,
 };
@@ -288,7 +333,10 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
     ? 'SELECT * FROM base'
     : 'SELECT DISTINCT ON (machine_id) * FROM base ORDER BY machine_id, started_at DESC';
   // El filtro live mira la ultima sesion del usuario (la que se muestra).
-  const liveClause = live === '1' ? `WHERE ${CONNECTED}` : live === '0' ? `WHERE NOT COALESCE(${CONNECTED}, FALSE)` : '';
+  // live: live | idle | open | closed ('1' y '0' siguen valiendo: en live / no en live).
+  const liveClause = ['live', 'idle', 'open', 'closed'].includes(live) ? `WHERE ${LIVE_STATE} = '${live}'`
+    : live === '1' ? `WHERE ${LIVE_STATE} = 'live'`
+      : live === '0' ? `WHERE ${LIVE_STATE} <> 'live'` : '';
   const order = `${SESSION_SORTS[sort] || SESSION_SORTS.started} ${dir === 'asc' ? 'ASC' : 'DESC'} NULLS LAST, s.started_at DESC`;
   params.push(pageSize, (page - 1) * pageSize);
 
@@ -308,6 +356,7 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
             c.channel_url AS creator_channel_url,
             ${APP_OPEN} AS app_open,
             ${CONNECTED} AS connected,
+            ${LIVE_STATE} AS live_state,
             COUNT(*) OVER ()::int AS total_rows
        FROM picked s
        -- Una sesion no guarda su canal: se muestra el canal mas reciente del usuario.
@@ -320,6 +369,7 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
           ORDER BY cr.last_seen_at DESC, cr.id DESC
           LIMIT 1
        ) c ON TRUE
+      ${SIGNAL_JOIN}
       ${liveClause}
       ORDER BY ${order}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
