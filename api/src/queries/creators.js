@@ -296,7 +296,10 @@ async function publicList(limit = 200, avatarBase = '') {
   const { rows } = await query(
     `SELECT c.id, c.user_id, platform, username, display_name, channel_url, avatar_url, follower_count,
             c.last_seen_at,
-            a.file IS NOT NULL AS has_avatar
+            a.file IS NOT NULL AS has_avatar,
+            -- Un usuario en live = un solo canal: el que conecto mas recientemente.
+            (c.user_id IS NOT NULL AND ROW_NUMBER() OVER (
+               PARTITION BY c.user_id ORDER BY c.last_seen_at DESC, c.id DESC) = 1) AS latest
        FROM creators c
        LEFT JOIN creator_avatars a ON a.creator_id = c.id
       WHERE is_public AND NOT is_hidden
@@ -307,7 +310,7 @@ async function publicList(limit = 200, avatarBase = '') {
   // Requiere aqui para evitar dependencia circular al cargar los modulos.
   const live = await require('./dashboard').liveUserIds();
   const out = rows.map((r) => ({
-    live: r.user_id != null && live.has(String(r.user_id)),
+    live: r.latest && live.has(String(r.user_id)),
     platform: r.platform,
     username: r.username,
     display_name: r.display_name || r.username,
