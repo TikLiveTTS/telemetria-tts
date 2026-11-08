@@ -221,6 +221,8 @@ async function liveMap() {
   const hasGeo = (r) => r.lat !== null && r.lon !== null;
   return {
     points: live.filter(hasGeo).map(({ st, ...p }) => p),
+    // Solo se dibujan si el usuario activa el filtro en el mapa.
+    other_points: rows.filter((r) => r.st !== 'live' && hasGeo(r)),
     count: live.filter(hasGeo).length,
     without_geo: live.filter((r) => !hasGeo(r)).length,
     idle: rows.filter((r) => r.st === 'idle').length,

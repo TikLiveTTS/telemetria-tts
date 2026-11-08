@@ -11,6 +11,11 @@ const BASEMAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.
 let map = null;
 let mapReady = false;
 let pendingPoints = null; // llegados antes de que el mapa cargara
+const shown = new Set(['live']); // estados visibles; por defecto solo en live
+const allPoints = (live) => [...live.points.map((p) => ({ ...p, st: 'live' })), ...(live.other_points || [])];
+function applyFilter() {
+  if (mapReady && map.getLayer('point')) map.setFilter('point', ['in', ['get', 'st'], ['literal', [...shown]]]);
+}
 
 export function destroyMap() {
   if (map) { map.remove(); map = null; }
@@ -24,7 +29,7 @@ function pointsToGeoJson(points) {
       .filter((p) => p.lat != null && p.lon != null)
       .map((p) => ({
         type: 'Feature',
-        properties: { machine_id: p.machine_id, city: p.city || '', country: countryName(p.country_code, p.country) },
+        properties: { st: p.st || 'live', machine_id: p.machine_id, city: p.city || '', country: countryName(p.country_code, p.country) },
         geometry: { type: 'Point', coordinates: [Number(p.lon), Number(p.lat)] },
       })),
   };
@@ -64,7 +69,7 @@ export function renderMap(container, points) {
       type: 'circle',
       source: 'points',
       paint: {
-        'circle-color': '#fe2c55',
+        'circle-color': ['match', ['get', 'st'], 'live', '#fe2c55', 'idle', '#f59e0b', '#9ca3af'],
         'circle-radius': 6,
         'circle-stroke-width': 2,
         'circle-stroke-color': '#fff',
@@ -90,6 +95,7 @@ export function renderMap(container, points) {
     });
 
     mapReady = true;
+    applyFilter();
   });
 }
 
@@ -171,7 +177,7 @@ let statOtherEl = null;
 function statCard(live) {
   statValueEl = el('div', { class: 'map-stat-value' });
   statWithoutGeoEl = el('div', { class: 'map-stat-label' });
-  statOtherEl = el('a', { class: 'map-stat-label', href: '#/sessions', style: 'display:block;text-decoration:underline', title: 'Ver quien es en Sesiones' });
+  statOtherEl = el('div', { class: 'map-stat-label', title: 'Marca para verlas tambien en el mapa' });
   updateStatCard(live);
 
   return el('div', { class: 'map-stat-card' },
@@ -188,11 +194,13 @@ function updateStatCard(live) {
   statWithoutGeoEl.textContent = `+${num(live.without_geo)} sin ubicacion`;
   statWithoutGeoEl.hidden = !live.without_geo;
   // Fuera del mapa: conectadas sin actividad y apps abiertas sin directo.
-  const parts = [];
-  if (live.idle) parts.push(`${num(live.idle)} conectadas sin actividad`);
-  if (live.open) parts.push(`${num(live.open)} apps abiertas`);
-  statOtherEl.textContent = parts.join(' · ');
-  statOtherEl.hidden = !parts.length;
+  statOtherEl.replaceChildren(
+    ...[['idle', live.idle, 'conectadas sin actividad'], ['open', live.open, 'apps abiertas']]
+      .filter(([, n]) => n)
+      .map(([st, n, txt]) => el('label', { style: 'display:block;cursor:pointer' },
+        el('input', { type: 'checkbox', checked: shown.has(st), onchange: (e) => { e.target.checked ? shown.add(st) : shown.delete(st); applyFilter(); } }),
+        ` ${num(n)} ${txt}`)));
+  statOtherEl.hidden = !statOtherEl.children.length;
 }
 
 let countriesChart = null;
@@ -285,7 +293,7 @@ export async function geoPage(view) {
     )
   );
 
-  renderMap(mapDiv, live.points);
+  renderMap(mapDiv, allPoints(live));
 
   countriesChart = countries.length
     ? barChart(
@@ -307,7 +315,7 @@ export async function geoRefresh() {
   ]);
   if (myId !== renderId) return; // se navego a otra pagina mientras esperaba
 
-  updateMapPoints(live.points);
+  updateMapPoints(allPoints(live));
   updateStatCard(live);
 
   if (countries.length) {
