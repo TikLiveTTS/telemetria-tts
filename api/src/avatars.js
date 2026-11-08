@@ -2,6 +2,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
+const sharp = require('sharp');
 const { query } = require('./db');
 const config = require('./config');
 
@@ -31,9 +32,15 @@ async function saveAvatar(creatorId, url, oldFile) {
   try {
     const img = await download(url);
     if (img) {
-      file = `${creatorId}.${EXT[img.type]}`;
-      type = img.type;
-      await fs.writeFile(path.join(config.avatarDir, file), img.buf);
+      // Todas se guardan como WebP de 128 px: el widget las pinta pequenas y
+      // pesan ~3 KB. Si sharp no puede (archivo raro), se guarda el original.
+      let buf = img.buf;
+      type = 'image/webp';
+      try {
+        buf = await sharp(img.buf).resize(128, 128, { fit: 'cover' }).webp({ quality: 72 }).toBuffer();
+      } catch (_) { type = img.type; buf = img.buf; }
+      file = `${creatorId}.${EXT[type]}`;
+      await fs.writeFile(path.join(config.avatarDir, file), buf);
       // La foto vieja se borra: con otra extension quedaria huerfana.
       if (oldFile && oldFile !== file) {
         await fs.unlink(path.join(config.avatarDir, path.basename(oldFile))).catch(() => {});
