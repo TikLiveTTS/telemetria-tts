@@ -192,6 +192,19 @@ async function countries(limit = 10, period = {}) {
   return rows;
 }
 
+// user_id de los usuarios EN LIVE ahora mismo (misma definicion que el mapa).
+async function liveUserIds() {
+  const { rows } = await query(
+    `WITH x AS (
+       SELECT s.machine_id, ${LIVE_STATE} AS st
+         FROM sessions s ${SIGNAL_JOIN}
+        WHERE s.ended_at IS NULL AND ${CONNECTED}
+     ) SELECT DISTINCT i.user_id FROM x JOIN installs i ON i.machine_id = x.machine_id
+        WHERE x.st = 'live' AND i.user_id IS NOT NULL`
+  );
+  return new Set(rows.map((r) => String(r.user_id)));
+}
+
 // Puntos del mapa: solo usuarios EN LIVE (conectados a su plataforma y con
 // actividad reciente). `count` coincide con los puntos; `without_geo` son los
 // que estan en live pero no se pueden dibujar. `idle` y `open` cuentan las
@@ -365,7 +378,7 @@ async function sessions({ page = 1, pageSize = 50, platform, country, version, q
                 (av.file IS NOT NULL) AS has_avatar, EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v
            FROM creators cr
            LEFT JOIN creator_avatars av ON av.creator_id = cr.id
-          WHERE cr.user_id = s.user_id
+          WHERE cr.user_id = s.user_id AND NOT cr.is_hidden
           ORDER BY cr.last_seen_at DESC, cr.id DESC
           LIMIT 1
        ) c ON TRUE
@@ -431,7 +444,7 @@ async function installProfile(machineId) {
               (av.file IS NOT NULL) AS has_avatar, EXTRACT(EPOCH FROM av.fetched_at)::bigint AS avatar_v
          FROM creators c
          LEFT JOIN creator_avatars av ON av.creator_id = c.id
-        WHERE c.machine_id = $1 OR ($2::text IS NOT NULL AND c.user_id = $2)
+        WHERE NOT c.is_hidden AND (c.machine_id = $1 OR ($2::text IS NOT NULL AND c.user_id = $2))
         ORDER BY c.follower_count DESC NULLS LAST`,
       [machineId, install.user_id]
     ),
@@ -480,5 +493,5 @@ async function systemStatus() {
 module.exports = {
   summary, daily, retention, countries, liveMap, geoHistory, installPoints, versions,
   features, featureDetail, sessions, sessionEvents, installProfile,
-  platformMix, systemStatus,
+  platformMix, systemStatus, liveUserIds,
 };

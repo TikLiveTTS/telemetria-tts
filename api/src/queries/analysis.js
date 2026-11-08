@@ -67,7 +67,7 @@ async function analysisRows() {
      ), cr AS (
        SELECT user_id, COUNT(*)::int AS n_channels, string_agg(DISTINCT platform, '|' ORDER BY platform) AS channel_platforms,
               MAX(follower_count) AS max_followers, BOOL_OR(is_public) AS is_public_creator
-         FROM creators WHERE user_id IS NOT NULL GROUP BY 1
+         FROM creators WHERE user_id IS NOT NULL AND NOT is_hidden GROUP BY 1
      )
      SELECT COALESCE(i.user_id, md5(i.machine_id)) AS id,
             to_char(i.first_seen_at AT TIME ZONE $1, 'YYYY-MM-DD') AS first_seen_date,

@@ -6,7 +6,7 @@ const { refresh } = require('./memo');
 const { DEFAULT_WORDS } = require('./connectors/blocked-words');
 const insights = require('./queries/insights');
 const dashboard = require('./queries/dashboard');
-const { syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
+const { pruneGoneChannels, syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars } = require('./avatars');
 
 // Tareas periodicas dentro del propio proceso: no hace falta cron ni un
 // contenedor extra.
@@ -116,6 +116,12 @@ async function daily() {
     console.error('[jobs] publicacion de creadores fallo:', err.message);
   }
   try {
+    const gone = await pruneGoneChannels();
+    if (gone > 0) console.log(`[jobs] canales que ya no existen, ocultados: ${gone}`);
+  } catch (err) {
+    console.error('[jobs] depuracion de canales fallo:', err.message);
+  }
+  try {
     const removed = await purgeHiddenAvatars();
     if (removed > 0) console.log(`[jobs] fotos de creadores ocultos borradas: ${removed}`);
   } catch (err) {
@@ -172,6 +178,9 @@ function start() {
     } catch (err) {
       console.error('[jobs] purga de palabras bloqueadas fallo:', err.message);
     }
+    // Los recien llegados ya nacen publicos; aqui se les baja la foto cada hora
+    // (los sin foto, los mas nuevos primero) en vez de esperar a la pasada diaria.
+    try { await refreshFromProfiles(40); } catch (err) { console.error('[jobs] fotos nuevas fallo:', err.message); }
     await warm();
     try {
       const closed = await sweepAbandonedSessions();

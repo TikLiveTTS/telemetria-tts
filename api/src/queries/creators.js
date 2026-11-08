@@ -294,16 +294,20 @@ async function merge(keepId, mergeId) {
 // aqui, no desde el CDN de TikTok, cuyas URLs caducan).
 async function publicList(limit = 200, avatarBase = '') {
   const { rows } = await query(
-    `SELECT c.id, platform, username, display_name, channel_url, avatar_url, follower_count,
+    `SELECT c.id, c.user_id, platform, username, display_name, channel_url, avatar_url, follower_count,
+            c.last_seen_at,
             a.file IS NOT NULL AS has_avatar
        FROM creators c
        LEFT JOIN creator_avatars a ON a.creator_id = c.id
       WHERE is_public AND NOT is_hidden
-      ORDER BY featured_order NULLS LAST, follower_count DESC NULLS LAST, last_seen_at DESC
+      ORDER BY c.last_seen_at DESC
       LIMIT $1`,
     [limit]
   );
-  return rows.map((r) => ({
+  // Requiere aqui para evitar dependencia circular al cargar los modulos.
+  const live = await require('./dashboard').liveUserIds();
+  const out = rows.map((r) => ({
+    live: r.user_id != null && live.has(String(r.user_id)),
     platform: r.platform,
     username: r.username,
     display_name: r.display_name || r.username,
@@ -311,6 +315,8 @@ async function publicList(limit = 200, avatarBase = '') {
     avatar: r.has_avatar ? `${avatarBase}/api/public/avatars/${r.id}` : r.avatar_url,
     followers: r.follower_count,
   }));
+  // Sort estable: los que estan en live primero, el resto por menor inactividad.
+  return out.sort((a, b) => b.live - a.live);
 }
 
 async function publicAvatar(id) {

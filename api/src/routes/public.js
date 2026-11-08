@@ -55,7 +55,10 @@ function base(req) {
 }
 
 // Foto guardada en AVATAR_DIR. Solo de creadores publicos.
-router.get('/api/public/avatars/:id', limit, async (req, res) => {
+// Limite propio y alto: una sola visita a la web pide cientos de fotos y con
+// el limite de 120/min las que pasaban se caian a la inicial.
+const avatarLimit = makeRateLimit({ max: 3000, windowMs: 60 * 1000 });
+router.get('/api/public/avatars/:id', avatarLimit, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!id) return res.status(404).end();
   try {
@@ -95,6 +98,8 @@ router.get('/embed/creators.js', limit, cors, async (req, res) => {
     '.ttt-c img,.ttt-ph{width:56px;height:56px;border-radius:50%;object-fit:cover;background:rgba(128,128,128,.2)}',
     '.ttt-ph{display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:600}',
     '.ttt-c b{font-size:.85rem;text-align:center;word-break:break-word}',
+    '.ttt-c{position:relative}',
+    '.ttt-live{position:absolute;top:8px;right:8px;background:#e11d48;color:#fff!important;opacity:1!important;padding:1px 6px;border-radius:999px;font-size:.6rem!important}',
     '.ttt-c span{font-size:.7rem;opacity:.6;text-transform:uppercase;letter-spacing:.5px}'
   ].join('');
   document.head.appendChild(css);
@@ -127,6 +132,13 @@ router.get('/embed/creators.js', limit, cors, async (req, res) => {
     }
 
     a.appendChild(avatar(c));
+
+    if (c.live) {
+      var l = document.createElement('span');
+      l.className = 'ttt-live';
+      l.textContent = 'EN VIVO';
+      a.appendChild(l);
+    }
 
     var b = document.createElement('b');
     b.textContent = '@' + c.username;

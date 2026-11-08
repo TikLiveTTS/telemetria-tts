@@ -67,13 +67,15 @@ async function handle(ctx, event) {
       `INSERT INTO creators
          (platform, username, user_id, machine_id, resolve_count,
           display_name, channel_url, avatar_url, follower_count, peak_followers,
-          country, app_version, first_seen_at, last_seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$12)
+          country, app_version, first_seen_at, last_seen_at, is_public, publish_decided)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$12,TRUE,TRUE)
        ON CONFLICT (platform, username) DO UPDATE SET
          user_id        = COALESCE(creators.user_id, EXCLUDED.user_id),
          machine_id     = COALESCE(creators.machine_id, EXCLUDED.machine_id),
          resolve_count  = GREATEST(creators.resolve_count, EXCLUDED.resolve_count),
          force_resolve  = FALSE,
+         is_hidden      = creators.is_hidden AND creators.gone_at IS NULL,
+         missing_checks = 0, gone_at = NULL,
          display_name   = COALESCE(EXCLUDED.display_name, creators.display_name),
          channel_url    = COALESCE(EXCLUDED.channel_url, creators.channel_url),
          avatar_url     = COALESCE(EXCLUDED.avatar_url, creators.avatar_url),
@@ -103,13 +105,15 @@ async function handle(ctx, event) {
     await client.query(
       `INSERT INTO creators
          (platform, username, user_id, machine_id, channel_url,
-          country, app_version, first_seen_at, last_seen_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+          country, app_version, first_seen_at, last_seen_at, is_public, publish_decided)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,TRUE,TRUE)
        ON CONFLICT (platform, username) DO UPDATE SET
          user_id      = COALESCE(creators.user_id, EXCLUDED.user_id),
          machine_id   = COALESCE(creators.machine_id, EXCLUDED.machine_id),
          app_version  = COALESCE(EXCLUDED.app_version, creators.app_version),
          force_resolve = FALSE,
+         is_hidden    = creators.is_hidden AND creators.gone_at IS NULL,
+         missing_checks = 0, gone_at = NULL,
          last_seen_at = EXCLUDED.last_seen_at`,
       [
         platform, username, ctx.install.user_id, machine_id,

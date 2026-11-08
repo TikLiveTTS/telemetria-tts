@@ -142,7 +142,7 @@ async function refreshFromProfiles(limit = 2000) {
        LEFT JOIN creator_avatars a ON a.creator_id = c.id
       WHERE c.platform IN ('tiktok', 'youtube', 'twitch') AND c.is_public AND NOT c.is_hidden
         AND (a.file IS NULL OR a.fetched_at < NOW() - INTERVAL '30 days')
-      ORDER BY c.featured_order NULLS LAST, c.follower_count DESC NULLS LAST
+      ORDER BY (a.file IS NULL) DESC, c.first_seen_at DESC
       LIMIT $1`,
     [limit]
   );
@@ -251,6 +251,65 @@ async function requestFreshAvatars() {
   return rowCount;
 }
 
+// true si el canal ya no existe (el creador cambio de nick o link), false si
+// existe o no se puede saber. YouTube responde 404; Twitch 200 con el titulo
+// generico "Twitch". TikTok: su oEmbed da 400 "Something went wrong" para un
+// usuario que no existe. Kick: su API da 404. Un bloqueo, 403/429 o timeout
+// nunca cuenta como inexistente.
+async function channelGone(c) {
+  if (c.platform === 'tiktok') {
+    const res = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(`https://www.tiktok.com/@${c.username}`)}`,
+      { signal: AbortSignal.timeout(15000), headers: { 'user-agent': BROWSER_UA } });
+    return res.status === 400 && /Something went wrong/.test(await res.text());
+  }
+  if (c.platform === 'kick') {
+    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(c.username)}`,
+      { signal: AbortSignal.timeout(15000), headers: { 'user-agent': BROWSER_UA } });
+    return res.status === 404;
+  }
+  if (c.platform === 'youtube' && c.channel_url) {
+    const res = await fetch(c.channel_url, { signal: AbortSignal.timeout(15000), headers: { 'user-agent': BROWSER_UA } });
+    return res.status === 404;
+  }
+  if (c.platform === 'twitch') {
+    const html = await fetchHtml(`https://www.twitch.tv/${encodeURIComponent(c.username)}`, CRAWLER_UA);
+    return !!html && /property="og:title"\s+content="Twitch"/.test(html);
+  }
+  return false;
+}
+
+// Depuracion diaria: los canales que la app no reporta hace 2+ dias se
+// comprueban en su plataforma. Al tercer dia seguido sin existir se ocultan
+// (is_hidden), y asi desaparecen de todas las secciones. La app los
+// reactiva sola si vuelve a reportarlos (connectors/creators.js).
+// ponytail: si TikTok/Kick bloquean la IP del VPS nunca dan "inexistente" y no se oculta nada.
+const GONE_AFTER = 3;
+async function pruneGoneChannels() {
+  const { rows } = await query(
+    `SELECT id, platform, username, channel_url FROM creators
+      WHERE platform IN ('tiktok', 'youtube', 'twitch', 'kick') AND NOT is_hidden
+        AND last_seen_at < NOW() - INTERVAL '2 days'`
+  );
+  let hidden = 0;
+  for (const r of rows) {
+    try {
+      if (await channelGone(r)) {
+        const res = await query(
+          `UPDATE creators SET missing_checks = missing_checks + 1,
+                  is_hidden = (missing_checks + 1 >= $2),
+                  is_public = is_public AND missing_checks + 1 < $2,
+                  gone_at = CASE WHEN missing_checks + 1 >= $2 THEN NOW() ELSE gone_at END
+            WHERE id = $1 RETURNING is_hidden`, [r.id, GONE_AFTER]);
+        if (res.rows[0].is_hidden) hidden++;
+      } else {
+        await query('UPDATE creators SET missing_checks = 0 WHERE id = $1 AND missing_checks > 0', [r.id]);
+      }
+    } catch (_) { /* plataforma sin respuesta: ni suma ni resetea */ }
+    await pause(1000);
+  }
+  return hidden;
+}
+
 // Creadores ocultos (pidieron salir de la web, spam, pruebas): se borra su
 // foto del disco y su indice. Lo promete la politica de privacidad (§7).
 async function purgeHiddenAvatars() {
@@ -266,4 +325,4 @@ async function purgeHiddenAvatars() {
   return rows.length;
 }
 
-module.exports = { startRefreshAll, refreshAllStatus, syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, profileAvatar, EXT };
+module.exports = { pruneGoneChannels, channelGone, startRefreshAll, refreshAllStatus, syncAvatars, refreshFromProfiles, requestFreshAvatars, purgeHiddenAvatars, download, parseTiktokAvatar, profileAvatar, EXT };
